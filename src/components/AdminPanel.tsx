@@ -59,9 +59,9 @@ const AUTHOR = {
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIG
 // ════════════════════════════════════════════════════════════════════════════
-const BATCH_SIZE               = 10;         // publish 10 articles, then take a long break
-const BATCH_PAUSE_MS           = 5 * 60 * 1000; // 25 min break after every 10 articles
-const INTER_ARTICLE_PAUSE_MS   = 8_000;      // 8s between articles — safe under Groq 30 RPM
+const BATCH_SIZE               = 10;
+const BATCH_PAUSE_MS           = 5 * 60 * 1000;
+const INTER_ARTICLE_PAUSE_MS   = 8_000;
 const GROQ_TIMEOUT_MS          = 40_000;
 const MAX_RETRIES               = 5;
 const ARTICLES_PER_CATEGORY     = 6;
@@ -100,7 +100,7 @@ const HISTORY_IMAGE_FALLBACKS = [
 ];
 const MIN_IMAGES_TO_PUBLISH     = 1;
 const TARGET_IMAGES_PER_ARTICLE = 4;
-const IMAGE_MIN_WIDTH           = 800;   // Pexels 'regular' is ~1080px, always passes
+const IMAGE_MIN_WIDTH           = 800;
 
 // ─── NEWS SOURCES ─────────────────────────────────────────────────────────────
 const NEWS_SOURCES: Record<string, { feeds: string[]; context: string }> = {
@@ -158,9 +158,6 @@ async function fetchHeadlines(url: string): Promise<{ title: string; description
 }
 
 // ─── Groq API with key rotation on rate limits ───────────────────────────────
-// Detects TPD (daily) vs RPM (per-minute) limits and handles each correctly:
-//   TPD → rotate to next key immediately (resets at midnight UTC)
-//   RPM → wait 62s and retry same key (resets every minute)
 async function groqRequest(
   key: string,
   messages: { role: string; content: string }[],
@@ -178,10 +175,8 @@ async function groqRequest(
   const maxTotal   = MAX_RETRIES * keys.length;
 
   for (let attempt = 1; attempt <= maxTotal; attempt++) {
-    // If Stop was clicked — bail out immediately, don't save anything
     if (pipelineSignal?.aborted) return null;
 
-    // Pick active key
     const now = Date.now();
     for (let i = 0; i < keys.length; i++) {
       const idx = (idxRef.value + i) % keys.length;
@@ -212,10 +207,9 @@ async function groqRequest(
             log(`⚠️ Only 1 Groq key — add NEXT_PUBLIC_GROQ_API_KEY_2 for seamless rotation`, 'warn');
             await sleep(60_000);
           }
-          continue; // try next key immediately
+          continue;
         }
 
-        // RPM limit — wait and retry same key
         const ra = parseInt(res.headers.get('retry-after') ?? '0', 10);
         const waitMs = Math.max(ra * 1000, 62_000) + (attempt * 2_000);
         log(`⏳ [${label}]${keyLabel} RPM limit — waiting ${Math.round(waitMs / 1000)}s (attempt ${attempt})`, 'warn');
@@ -223,7 +217,6 @@ async function groqRequest(
         continue;
       }
       if (!res.ok) {
-        const errText = await res.text().catch(() => '');
         log(`⚠️ [${label}]${keyLabel} HTTP ${res.status} — attempt ${attempt}`, 'warn');
         await sleep(6000 * Math.ceil(attempt / keys.length));
         continue;
@@ -245,20 +238,15 @@ async function groqRequest(
   return null;
 }
 
-
 // ════════════════════════════════════════════════════════════════════════════
-// FIX: Robust JSON extractor
-// Handles: markdown fences, arrays AND objects, extra text before/after JSON
+// Robust JSON extractor
 // ════════════════════════════════════════════════════════════════════════════
 function extractJSON<T>(raw: string | null): T | null {
   if (!raw) return null;
 
-  // Step 1: Aggressively strip ALL markdown fences and surrounding text
   let cleaned = raw.trim();
-  // Remove ``` fences with optional language tag and optional space
   cleaned = cleaned.replace(/^`{1,3}(?:json)?\s*/i, '').replace(/\s*`{1,3}\s*$/g, '').trim();
 
-  // Step 2: fixControlChars — convert literal \n \r \t inside JSON strings to escape seqs
   function fixControlChars(s: string): string {
     const out: string[] = [];
     let inStr = false;
@@ -274,13 +262,8 @@ function extractJSON<T>(raw: string | null): T | null {
     return out.join('');
   }
 
-  // Step 3: Try parse attempts in order
-  const attempts = [
-    cleaned,
-    fixControlChars(cleaned),
-  ];
+  const attempts = [cleaned, fixControlChars(cleaned)];
 
-  // Also try extracting just the {...} or [...] portion
   const objM = cleaned.match(/\{[\s\S]*\}/);
   const arrM = cleaned.match(/\[[\s\S]*\]/);
   if (objM) attempts.push(objM[0], fixControlChars(objM[0]));
@@ -290,8 +273,6 @@ function extractJSON<T>(raw: string | null): T | null {
     try { return JSON.parse(attempt) as T; } catch { /* try next */ }
   }
 
-  // Step 4: Field-by-field extraction for severely malformed JSON
-  // Use the cleaned string with control chars fixed
   const fixed = fixControlChars(cleaned);
 
   const titleM   = fixed.match(/"title"\s*:\s*"([^"]{5,255})"/);
@@ -299,7 +280,6 @@ function extractJSON<T>(raw: string | null): T | null {
   const scoreM   = fixed.match(/"score"\s*:\s*([\d.]+)/);
   const imgM     = fixed.match(/"image_queries"\s*:\s*(\[[^\]]*\])/);
 
-  // Extract content — everything between "content": " and the next top-level field
   const contentM = fixed.match(/"content"\s*:\s*"([\s\S]{50,}?)"\s*,\s*"(?:score|image_queries)"/)
     || fixed.match(/"content"\s*:\s*"([\s\S]{50,}?)"\s*\}/)
     || fixed.match(/"content"\s*:\s*"([\s\S]{50,})/);
@@ -310,7 +290,6 @@ function extractJSON<T>(raw: string | null): T | null {
       .replace(/\\"/g, '"')
       .replace(/\\t/g, '\t')
       .trim();
-    // Trim to last complete sentence
     const lastStop = Math.max(rawContent.lastIndexOf('.'), rawContent.lastIndexOf('।'), rawContent.lastIndexOf('!'), rawContent.lastIndexOf('?'));
     const content = lastStop > 100 ? rawContent.substring(0, lastStop + 1) : rawContent;
 
@@ -329,33 +308,55 @@ function extractJSON<T>(raw: string | null): T | null {
   return null;
 }
 
-
 // ════════════════════════════════════════════════════════════════════════════
-// IMAGE PIPELINE
+// IMAGE DEDUPLICATION — Fixed with per-query page cursor advancement
 //
-// Queries come from the article JSON (image_queries array) — no extra Groq
-// call needed. The article prompt instructs the model to return 4 targeted
-// queries that are specific to the subject (person, place, film, event) with
-// generic fallback queries so Pexels always finds something.
+// ROOT CAUSE of same images across articles:
+//   The old code used Math.random() * 3 + 1 to pick pages 1-3.
+//   With 66 articles all querying similar terms, the same pages 1-3 were
+//   repeatedly fetched — guaranteeing the same photo IDs every time.
 //
-// Pexels has: athletes in action, city skylines, stadiums, landmarks,
-// cinema halls, tech offices, hospital corridors, space imagery, and much more.
-// It does NOT have paparazzi celebrity close-ups — so person queries are
-// role/sport/activity based ("cricket batsman action shot") not name-based.
-// ════════════════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════════════════
-// HYBRID IMAGE PIPELINE — Wikimedia (persons/places) + Pexels (context)
+// THE FIX — Two-layer approach:
 //
-// Strategy:
-//   1. Scan title + image_queries for famous persons and places
-//   2. Fetch their real photos from Wikimedia Commons (free, CC licensed)
-//      → Virat Kohli, Ranveer Singh, Modi, Mumbai, Delhi, Taj Mahal etc.
-//   3. Fill remaining slots with Pexels atmospheric/context images
-//   4. Mix: person/place photos first, context images pad the rest
+//   Layer 1: _pexelsQueryPageMap (per-query page cursor)
+//     Tracks which page to fetch NEXT for each unique query string.
+//     Article 1 with query "cricket stadium" gets page 1.
+//     Article 2 with the same query gets page 2. Article 3 gets page 3. Etc.
+//     This alone prevents duplicate fetches — different pages = different photos.
+//
+//   Layer 2: _sessionUsedPexelsIds / _sessionUsedWikiIds (ID blocklist)
+//     Even if two articles somehow get the same page, any already-used photo
+//     ID is skipped. This is the safety net.
+//
+//   Both caches are cleared at the start of each pipeline run via
+//   clearSessionImageCache() so each "Generate" press starts fresh.
 // ════════════════════════════════════════════════════════════════════════════
 
-// Famous persons — keyword → Wikimedia search term
+// Session-level ID blocklists — prevent ANY photo reuse across articles
+const _sessionUsedPexelsIds = new Set<string>();
+const _sessionUsedWikiIds   = new Set<string>();
+
+// Per-query page cursor — each call to getNextPexelsPage(query) returns the
+// NEXT unused page for that query and advances the internal counter.
+// Pages wrap at MAX_PEXELS_PAGE so we never go out of bounds.
+const _pexelsQueryPageMap   = new Map<string, number>();
+const MAX_PEXELS_PAGE       = 15; // Pexels supports up to 80 pages per query
+
+function getNextPexelsPage(query: string): number {
+  const current = _pexelsQueryPageMap.get(query) ?? 1;
+  _pexelsQueryPageMap.set(query, current >= MAX_PEXELS_PAGE ? 1 : current + 1);
+  return current;
+}
+
+function clearSessionImageCache() {
+  _sessionUsedPexelsIds.clear();
+  _sessionUsedWikiIds.clear();
+  _pexelsQueryPageMap.clear(); // also reset page cursors so each run starts at page 1
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Known entities for Wikimedia lookups
+// ────────────────────────────────────────────────────────────────────────────
 const KNOWN_PERSONS: Record<string, string> = {
   'virat kohli': 'Virat Kohli', 'kohli': 'Virat Kohli',
   'rohit sharma': 'Rohit Sharma cricketer', 'rohit': 'Rohit Sharma cricketer',
@@ -379,7 +380,6 @@ const KNOWN_PERSONS: Record<string, string> = {
   'neeraj chopra': 'Neeraj Chopra', 'pv sindhu': 'PV Sindhu',
 };
 
-// Famous places — keyword → Wikimedia search term
 const KNOWN_PLACES: Record<string, string> = {
   'mumbai': 'Mumbai city skyline', 'delhi': 'New Delhi India',
   'new delhi': 'New Delhi India', 'bangalore': 'Bangalore city India',
@@ -391,7 +391,6 @@ const KNOWN_PLACES: Record<string, string> = {
   'wankhede': 'Wankhede Stadium Mumbai', 'eden gardens': 'Eden Gardens Kolkata',
 };
 
-// Pexels category fallbacks (used for context/mood images)
 const CATEGORY_FALLBACK_QUERIES: Record<string, string[]> = {
   cricket:    ['cricket sport bat ball', 'cricket stadium crowd', 'sport india',             'cricket player action'],
   bollywood:  ['bollywood cinema hall',  'film production set',   'stage performance lights', 'indian entertainment'],
@@ -439,23 +438,10 @@ interface HybridPhoto {
     downloadLocation?: string;
   }
 
-// ─── Session-level deduplication ─────────────────────────────────────────────
-// Tracks ALL Pexels photo IDs used across the entire pipeline run.
-// Prevents the same photo appearing in multiple articles.
-// Cleared at the start of each Generate run via clearSessionImageCache().
-const _sessionUsedPexelsIds = new Set<string>();
-const _sessionUsedWikiIds   = new Set<string>();
-
-function clearSessionImageCache() {
-  _sessionUsedPexelsIds.clear();
-  _sessionUsedWikiIds.clear();
-}
-
 async function fetchWikimediaImages(searchTerm: string, count: number = 2): Promise<HybridPhoto[]> {
   const photos: HybridPhoto[] = [];
   const WIKI_API = 'https://en.wikipedia.org/w/api.php';
   try {
-    // First try: File namespace search
     const ctrl1 = new AbortController(); setTimeout(() => ctrl1.abort(), 8000);
     const searchRes = await fetch(`${WIKI_API}?action=query&list=search&srsearch=${encodeURIComponent(searchTerm)}&srnamespace=6&srlimit=${count * 3}&format=json&origin=*`, { signal: ctrl1.signal });
     if (!searchRes.ok) throw new Error('search failed');
@@ -478,7 +464,6 @@ async function fetchWikimediaImages(searchTerm: string, count: number = 2): Prom
         const license = info.extmetadata?.LicenseShortName?.value ?? '';
         if (!isFreeWikimediaLicense(license)) continue;
         const wid = `wiki_${page.pageid}`;
-        // Skip if already used in another article this session
         if (_sessionUsedWikiIds.has(wid)) continue;
         photos.push({
           id:     wid,
@@ -493,7 +478,6 @@ async function fetchWikimediaImages(searchTerm: string, count: number = 2): Prom
       await sleep(200);
     }
 
-    // Fallback: get images from the Wikipedia article about the subject
     if (photos.length === 0) {
       const ctrl3 = new AbortController(); setTimeout(() => ctrl3.abort(), 8000);
       const artSearch = await fetch(`${WIKI_API}?action=query&list=search&srsearch=${encodeURIComponent(searchTerm)}&srlimit=1&format=json&origin=*`, { signal: ctrl3.signal });
@@ -542,16 +526,7 @@ async function fetchWikimediaImages(searchTerm: string, count: number = 2): Prom
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SMART CASCADE IMAGE FETCHER
-// Never gives up — tries every source in priority order until images found.
-//
-// Priority per category:
-//   BOLLYWOOD: OMDb (movie poster) → Wikimedia (actors) → Pexels (cinema mood)
-//   CRICKET:   Wikimedia (player action) → Wikimedia (venue) → Pexels (stadium)
-//   OTHERS:    Wikimedia (persons) → Wikimedia (places) → Pexels (context)
-//
-// Cascade fallback chain — if primary fails, tries:
-//   Person photo → Related person → Venue/Ground → Category theme → Generic
+// SMART CASCADE IMAGE FETCHER — with per-query page advancement (THE FIX)
 // ════════════════════════════════════════════════════════════════════════════
 async function fetchAndSaveImages(
   pexelsKey: string,
@@ -573,24 +548,32 @@ async function fetchAndSaveImages(
       if (!seen.has(p.id)) {
         seen.add(p.id);
         allPhotos.push(p);
-        // Register in session tracker to prevent reuse in other articles
+        // Mark as used globally so NO other article in this session gets these photos
         if (p.source === 'pexels')    _sessionUsedPexelsIds.add(p.id);
         if (p.source === 'wikimedia') _sessionUsedWikiIds.add(p.id);
       }
     });
   };
 
-  // Fetch from Pexels — requests extra photos and skips already-used IDs
-  // so each article gets fresh images even when queries are similar.
+  // ── FIXED Pexels fetcher ─────────────────────────────────────────────────
+  // KEY CHANGE: Uses getNextPexelsPage(query) instead of Math.random() * 3.
+  //
+  // Old behaviour: random page 1-3 → articles share the same small page pool
+  //   → same photo IDs returned → same images across articles.
+  //
+  // New behaviour: each query has a dedicated page cursor that advances by 1
+  //   on every call. Article 1 gets page 1, article 2 gets page 2, etc.
+  //   Pexels has 80 pages per query so we won't run out for a very long time.
+  //   The _sessionUsedPexelsIds blocklist is a second safety net in case of
+  //   any overlap (e.g. cursor wrap-around on extremely long runs).
   const pexelsFetch = async (query: string, count = 2): Promise<HybridPhoto[]> => {
     if (!pexelsKey) return [];
     const results: HybridPhoto[] = [];
 
-    // Request 3x more than needed so we have candidates to skip duplicates from
-    const perPage = Math.min(count * 3, 15);
-
-    // Random page offset (1–3) so repeated same-query calls get different results
-    const page = Math.floor(Math.random() * 3) + 1;
+    // FIX: sequential page cursor per query — guarantees different photos per article
+    const page    = getNextPexelsPage(query);
+    // Fetch 5x candidates so we can skip already-used IDs and still fill quota
+    const perPage = Math.min(count * 5, 25);
 
     try {
       const ctrl = new AbortController();
@@ -607,8 +590,7 @@ async function fetchAndSaveImages(
         if (results.length >= count) break;
         if (p.width < IMAGE_MIN_WIDTH) continue;
         const pid = `pexels_${p.id}`;
-        // Skip if this photo was already used in another article this session
-        if (_sessionUsedPexelsIds.has(pid)) continue;
+        if (_sessionUsedPexelsIds.has(pid)) continue; // skip if used in another article
         results.push({
           id:               pid,
           url:              p.src.large2x || p.src.large,
@@ -620,12 +602,13 @@ async function fetchAndSaveImages(
         });
       }
 
-      // If page 1–3 are exhausted (all used), try page 4–6 as fallback
-      if (results.length < count && page <= 3) {
+      // Still not enough? Advance cursor and try the very next page
+      if (results.length < count) {
+        const nextPage = getNextPexelsPage(query);
         const ctrl2 = new AbortController();
         const t2    = setTimeout(() => ctrl2.abort(), 8000);
         const res2  = await fetch(
-          `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page + 3}&orientation=landscape`,
+          `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${nextPage}&orientation=landscape`,
           { signal: ctrl2.signal, headers: { Authorization: pexelsKey } }
         );
         clearTimeout(t2);
@@ -656,7 +639,6 @@ async function fetchAndSaveImages(
       log(`    🎬 OMDb: ${omdb.length} posters`, omdb.length > 0 ? 'info' : 'warn');
       await sleep(300);
     }
-    // Actor/director photos via Wikimedia
     for (const person of detectedPersons.slice(0, 2)) {
       if (allPhotos.length >= 3) break;
       const w = await fetchWikimediaImages(person.wikiTerm, 1);
@@ -664,7 +646,6 @@ async function fetchAndSaveImages(
       if (w.length > 0) log(`    👤 Wikimedia actor "${person.wikiTerm}": ${w.length}`, 'info');
       await sleep(250);
     }
-    // Fallback: cinema/film mood from Pexels
     if (allPhotos.length < TARGET_IMAGES_PER_ARTICLE) {
       for (const q of ['bollywood film set', 'indian cinema audience', 'film production india', 'cinema hall india']) {
         if (allPhotos.length >= TARGET_IMAGES_PER_ARTICLE) break;
@@ -679,7 +660,6 @@ async function fetchAndSaveImages(
     const cricketQueries = extractCricketQueries(title, imageQueries);
     log(`    🏏 Cricket queries: ${cricketQueries.join(', ')}`, 'info');
 
-    // Step 1: try specific player/match action on Wikimedia
     for (const query of cricketQueries.slice(0, 2)) {
       if (allPhotos.length >= 2) break;
       const w = await fetchWikimediaImages(query, 2);
@@ -688,7 +668,6 @@ async function fetchAndSaveImages(
       await sleep(300);
     }
 
-    // Step 2: if still low — try detected places (stadiums/grounds)
     if (allPhotos.length < 2) {
       for (const place of detectedPlaces.slice(0, 2)) {
         if (allPhotos.length >= 2) break;
@@ -699,7 +678,6 @@ async function fetchAndSaveImages(
       }
     }
 
-    // Step 3: fill rest from Pexels — try specific then generic
     if (allPhotos.length < TARGET_IMAGES_PER_ARTICLE) {
       const pexelsCricket = [
         ...imageQueries.slice(0, 2),
@@ -716,9 +694,8 @@ async function fetchAndSaveImages(
     }
   }
 
-  // ── ALL OTHER CATEGORIES: persons → places → image queries → fallback ───
+  // ── ALL OTHER CATEGORIES ─────────────────────────────────────────────────
   else {
-    // Step 1: Wikimedia persons
     for (const person of detectedPersons.slice(0, 2)) {
       if (allPhotos.length >= Math.floor(TARGET_IMAGES_PER_ARTICLE / 2)) break;
       const w = await fetchWikimediaImages(person.wikiTerm, 2);
@@ -727,7 +704,6 @@ async function fetchAndSaveImages(
       await sleep(300);
     }
 
-    // Step 2: Wikimedia places
     for (const place of detectedPlaces.slice(0, 2)) {
       if (allPhotos.length >= Math.floor(TARGET_IMAGES_PER_ARTICLE / 2)) break;
       const w = await fetchWikimediaImages(place.wikiTerm, 2);
@@ -736,12 +712,11 @@ async function fetchAndSaveImages(
       await sleep(300);
     }
 
-    // Step 3: Pexels with article-specific queries — shuffled to vary results
     if (allPhotos.length < TARGET_IMAGES_PER_ARTICLE) {
       const queries = [
         ...imageQueries.filter(q => typeof q === 'string' && q.trim().length > 2).slice(0, 4),
         ...(CATEGORY_FALLBACK_QUERIES[category] ?? ['india news']),
-      ].slice(0, 6).sort(() => Math.random() - 0.5); // shuffle for variety
+      ].slice(0, 6).sort(() => Math.random() - 0.5);
 
       for (const q of queries) {
         if (allPhotos.length >= TARGET_IMAGES_PER_ARTICLE) break;
@@ -751,7 +726,7 @@ async function fetchAndSaveImages(
     }
   }
 
-  // ── ABSOLUTE LAST RESORT: generic category fallback, NEVER return 0 ─────
+  // ── ABSOLUTE LAST RESORT ─────────────────────────────────────────────────
   if (allPhotos.length === 0) {
     log(`    ⚠ Primary sources empty — using category fallback`, 'warn');
     const lastResort = CATEGORY_FALLBACK_QUERIES[category] ?? ['india current events', 'india news today'];
@@ -790,13 +765,11 @@ async function fetchAndSaveImages(
   return toSave.length;
 }
 
-
-// ─── OMDb image fetcher (browser-side) ───────────────────────────────────────
+// ─── OMDb image fetcher ───────────────────────────────────────────────────────
 async function fetchOMDbImages(title: string, apiKey: string, count: number = 2): Promise<HybridPhoto[]> {
   const photos: HybridPhoto[] = [];
   const OMDB = 'https://www.omdbapi.com';
   try {
-    // Search by first 4 words of title
     const searchTitle = title.split(' ').slice(0, 4).join(' ');
     const ctrl1 = new AbortController(); setTimeout(() => ctrl1.abort(), 8000);
     const searchRes = await fetch(`${OMDB}/?apikey=${apiKey}&s=${encodeURIComponent(searchTitle)}&type=movie`, { signal: ctrl1.signal });
@@ -804,7 +777,6 @@ async function fetchOMDbImages(title: string, apiKey: string, count: number = 2)
     const searchData = await searchRes.json();
     let results: any[] = searchData?.Search ?? [];
 
-    // Fallback to TV/series (for OTT shows)
     if (results.length === 0) {
       const ctrl2 = new AbortController(); setTimeout(() => ctrl2.abort(), 8000);
       const tvRes = await fetch(`${OMDB}/?apikey=${apiKey}&s=${encodeURIComponent(searchTitle)}&type=series`, { signal: ctrl2.signal });
@@ -818,7 +790,6 @@ async function fetchOMDbImages(title: string, apiKey: string, count: number = 2)
       if (!detailRes.ok) continue;
       const movie = await detailRes.json();
       if (!movie?.Poster || movie.Poster === 'N/A') continue;
-      // Upgrade from 300px thumbnail to 1000px high-res
       const highRes = movie.Poster.replace('SX300', 'SX1000').replace('SY150', 'SY1000');
       photos.push({
         id:     `omdb_${result.imdbID}`,
@@ -861,27 +832,24 @@ function extractCricketQueries(title: string, imageQueries: string[]): string[] 
     if (lower.includes(keyword)) { queries.push(action); break; }
   }
 
-  if (lower.includes('ipl'))         queries.push('IPL cricket match');
-  if (lower.includes('test'))        queries.push('Test cricket match');
-  if (lower.includes('t20'))         queries.push('T20 cricket match');
-  if (lower.includes('world cup'))   queries.push('Cricket World Cup');
-  if (lower.includes('bcci'))        queries.push('BCCI cricket India');
-  if (lower.includes('rcb'))         queries.push('Royal Challengers Bangalore cricket');
-  if (lower.includes('csk'))         queries.push('Chennai Super Kings cricket');
+  if (lower.includes('ipl'))            queries.push('IPL cricket match');
+  if (lower.includes('test'))           queries.push('Test cricket match');
+  if (lower.includes('t20'))            queries.push('T20 cricket match');
+  if (lower.includes('world cup'))      queries.push('Cricket World Cup');
+  if (lower.includes('bcci'))           queries.push('BCCI cricket India');
+  if (lower.includes('rcb'))            queries.push('Royal Challengers Bangalore cricket');
+  if (lower.includes('csk'))            queries.push('Chennai Super Kings cricket');
   if (lower.includes('mumbai indians')) queries.push('Mumbai Indians cricket IPL');
 
   if (queries.length === 0) queries.push('cricket batting action India', 'cricket match stadium India');
   return [...new Set(queries)];
 }
 
-
-// ─── Generate smart image search suggestions based on article title + category ──
-// Shown in the image panel so admin knows exactly what to search for
+// ─── Image search suggestions for the admin UI ───────────────────────────────
 function generateImageSuggestions(title: string, category: string): string[] {
   const lower   = title.toLowerCase();
   const suggestions: string[] = [];
 
-  // Person-specific suggestions
   const personMap: Record<string, string[]> = {
     'virat kohli':      ['Virat Kohli batting', 'Virat Kohli RCB'],
     'kohli':            ['Virat Kohli cricket', 'cricket batsman India'],
@@ -910,7 +878,6 @@ function generateImageSuggestions(title: string, category: string): string[] {
     }
   }
 
-  // Category-specific fallbacks if no person detected
   if (suggestions.length < 2) {
     const categoryDefaults: Record<string, string[]> = {
       cricket:    ['cricket batting action India', 'cricket stadium IPL crowd', 'India cricket team'],
@@ -963,12 +930,11 @@ export default function AdminPanel() {
   const logContainerRef = useRef<HTMLDivElement>(null);
   const stopRef     = useRef(false);
   const countRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const abortRef    = useRef<AbortController | null>(null); // pipeline-level abort
+  const abortRef    = useRef<AbortController | null>(null);
 
   useEffect(() => { fetchArticles(); }, [filter]);
   useEffect(() => { setSelectMode(false); setSelectedIds(new Set()); }, [filter]);
   useEffect(() => {
-    // Scroll ONLY the log container — never scroll the whole page
     const container = logContainerRef.current;
     if (container) container.scrollTop = container.scrollHeight;
   }, [genLogs]);
@@ -983,7 +949,6 @@ export default function AdminPanel() {
       setCountdown(seconds);
       let rem = seconds;
       countRef.current = setInterval(() => {
-        // If stop was clicked during countdown — resolve immediately so pipeline exits
         if (stopRef.current) {
           clearInterval(countRef.current!);
           setCountdown(0);
@@ -1048,14 +1013,13 @@ export default function AdminPanel() {
   // MAIN GENERATE PIPELINE
   // ══════════════════════════════════════════════════════════════════════════
   const handleGenerate = async () => {
-    // Collect all configured Groq keys — rotate when one hits rate limit
     const groqKeys: string[] = [
         process.env.NEXT_PUBLIC_GROQ_API_KEY,
         process.env.NEXT_PUBLIC_GROQ_API_KEY_2,
         process.env.NEXT_PUBLIC_GROQ_API_KEY_3,
     ].filter(Boolean) as string[];
 
-    const pexelsKey = process.env.NEXT_PUBLIC__PEXELS_API_KEY as string | undefined;
+    const pexelsKey = process.env.NEXT_PUBLIC_PEXELS_API_KEY as string | undefined;
     const omdbKey   = process.env.NEXT_PUBLIC_OMDB_API_KEY as string | undefined;
 
     if (groqKeys.length === 0) {
@@ -1078,8 +1042,9 @@ export default function AdminPanel() {
     setGenLogs([]); setGenDone(0);
     setBatchInfo(''); stopRef.current = false;
     abortRef.current = new AbortController();
-    clearSessionImageCache(); // reset cross-article image deduplication
-    const _sessionTopics = new Set<string>(); // tracks topics used in THIS run // fresh abort controller for this run
+    // FIX: clearSessionImageCache now also resets per-query page cursors
+    clearSessionImageCache();
+    const _sessionTopics = new Set<string>();
 
     const log = addLog;
     let groqKeyIndex    = 0;
@@ -1099,13 +1064,12 @@ export default function AdminPanel() {
     log(`🚀 Starting FULL AUTO pipeline — ${totalArticles} articles`, 'info');
     log(`✍️  Author: ${AUTHOR.name} | 🤖 Groq llama-3.3-70b (${groqKeys.length} key${groqKeys.length > 1 ? 's' : ''}) | 🖼 Images: Pexels | 🔄 Auto-publish: score ≥ ${AUTO_PUBLISH_SCORE}`, 'info');
     log(`⚙️  Batch: ${BATCH_SIZE} articles | Long pause: ${BATCH_PAUSE_MS / 60000} min | Inter-article: ${INTER_ARTICLE_PAUSE_MS / 1000}s | Timeout: ${GROQ_TIMEOUT_MS / 1000}s`, 'info');
+    log(`🖼  Image dedup: per-query page cursor + session ID blocklist (no duplicate photos across articles)`, 'info');
 
     let grandTotal    = 0;
     let autoPublished = 0;
-    let globalIdx     = 0;   // FIX: counts articles written, for batch-pause logic
+    let globalIdx     = 0;
 
-    // ── Pre-fetch recently covered topics per category to avoid repetition ──
-    // Fetches last 30 article titles per category so Groq picks fresh topics
     log('🔍 Loading previously covered topics to avoid repetition...', 'info');
     const recentTitlesByCategory: Record<string, string> = {};
     try {
@@ -1113,19 +1077,18 @@ export default function AdminPanel() {
         .from('articles')
         .select('title, category')
         .order('published_date', { ascending: false })
-        .limit(300); // last 300 articles across all categories
+        .limit(300);
 
       if (recentArticles) {
         for (const cat of categories) {
           const catTitles = recentArticles
             .filter(a => a.category === cat)
-            .slice(0, 30)  // last 30 per category
+            .slice(0, 30)
             .map(a => `- ${a.title}`)
             .join('\n');
           recentTitlesByCategory[cat] = catTitles;
         }
-        const totalCovered = recentArticles.length;
-        log(`✅ Loaded ${totalCovered} recent articles for topic deduplication`, 'info');
+        log(`✅ Loaded ${recentArticles.length} recent articles for topic deduplication`, 'info');
       }
     } catch {
       log('⚠ Could not load recent topics — continuing without dedup', 'warn');
@@ -1162,7 +1125,6 @@ export default function AdminPanel() {
         if (allHeadlines.length > 0) log(`  📋 ${allHeadlines.length} headlines (${feedsWorked} feeds)`, 'info');
         else log(`  ⚠ All feeds failed — using Groq knowledge`, 'warn');
 
-        // ── FIX: Explicit JSON-only instruction prevents markdown wrapping ──
         const prevCatTitles = recentTitlesByCategory[category] || '';
         const hasPrevious   = prevCatTitles.length > 0;
         log(`  🤖 Picking ${ARTICLES_PER_CATEGORY} fresh topics${hasPrevious ? ' (avoiding recent duplicates)' : ''}...`, 'progress');
@@ -1176,36 +1138,21 @@ export default function AdminPanel() {
                 `You are a trending news analyst for Indian audiences. ` +
                 `Return a JSON array of exactly ${ARTICLES_PER_CATEGORY} specific trending topics for the category: ${category}. ` +
                 `Context: ${catConfig.context}. ` +
-                `
-
-CRITICAL — AVOID REPETITION:
-` +
-                `You must NOT pick topics that are the same as or very similar to these recently covered titles:
-` +
+                `\n\nCRITICAL — AVOID REPETITION:\n` +
+                `You must NOT pick topics that are the same as or very similar to these recently covered titles:\n` +
                 (hasPrevious ? prevCatTitles : '(no previous articles yet — pick freely)') +
-                `
-
-RULES:
-` +
-                `- Pick DIFFERENT angles, DIFFERENT people, DIFFERENT events than the above
-` +
-                `- If a person was recently covered, pick a different person or a different angle on them
-` +
-                `- If an event was recently covered, pick a different event
-` +
-                `- Topics must be genuinely current and newsworthy
-` +
-                `- Return ONLY the raw JSON array. No markdown, no backticks, no explanation.
-` +
+                `\n\nRULES:\n` +
+                `- Pick DIFFERENT angles, DIFFERENT people, DIFFERENT events than the above\n` +
+                `- If a person was recently covered, pick a different person or a different angle on them\n` +
+                `- If an event was recently covered, pick a different event\n` +
+                `- Topics must be genuinely current and newsworthy\n` +
+                `- Return ONLY the raw JSON array. No markdown, no backticks, no explanation.\n` +
                 `Example format: ["Topic one here", "Topic two here", "Topic three here"]`,
             },
             {
               role: 'user',
               content: allHeadlines.length > 0
-                ? `${category.toUpperCase()} headlines:
-${headlineContext}
-
-Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covered in the recent titles above. Raw JSON only.`
+                ? `${category.toUpperCase()} headlines:\n${headlineContext}\n\nReturn a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covered in the recent titles above. Raw JSON only.`
                 : `Generate a JSON array of ${ARTICLES_PER_CATEGORY} trending ${category} topics for Indian audiences that are NOT similar to the recently covered titles above. Raw JSON array only.`,
             },
           ],
@@ -1216,7 +1163,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
           abortRef.current?.signal
         );
 
-        // ── FIX: extractJSON now handles arrays correctly ──
         const topics = extractJSON<string[]>(topicsRaw);
 
         if (!topics || !Array.isArray(topics) || topics.length === 0) {
@@ -1228,7 +1174,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
 
         const validTopics = topics
           .filter(t => typeof t === 'string' && t.trim().length > 3)
-          // Also filter out any topics already used in this pipeline run
           .filter(t => {
             const key = t.toLowerCase().substring(0, 40);
             if (_sessionTopics.has(key)) { log(`  ⏭ Skipping duplicate: "${t}"`, 'warn'); return false; }
@@ -1239,15 +1184,13 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
         log(`  ✅ ${validTopics.length} fresh topics identified`, 'success');
         validTopics.forEach((t, i) => log(`    ${i + 1}. ${t}`, 'info'));
 
-        // Generate each article
         for (let ti = 0; ti < validTopics.length; ti++) {
           if (stopRef.current) { log('⛔ Stopped.', 'error'); break; }
 
           globalIdx++;
           const topic = validTopics[ti];
-          _sessionTopics.add(topic.toLowerCase().substring(0, 40)); // register for dedup
+          _sessionTopics.add(topic.toLowerCase().substring(0, 40));
 
-          // FIX: batch pause uses globalIdx AFTER increment (correct)
           if (globalIdx > 1 && (globalIdx - 1) % BATCH_SIZE === 0) {
             const ps = BATCH_PAUSE_MS / 1000;
             const pm = Math.round(ps / 60);
@@ -1261,7 +1204,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
           log(`\n  ✍️  [${globalIdx}/${totalArticles}] "${topic}"`, 'progress');
           setBatchInfo(`[${globalIdx}/${totalArticles}] Writing: ${topic.substring(0, 50)}...`);
 
-          // ── SPICY TITLE + ARTICLE + SMART IMAGE QUERIES ──
           const raw = await groqRequest(
             getGroqKey(),
             [
@@ -1346,7 +1288,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
             abortRef.current?.signal
           );
 
-          // If Stop was clicked during the Groq call — discard and exit immediately
           if (stopRef.current) { log('⛔ Stopped — current article discarded.', 'error'); break; }
 
           interface ArticleJSON { title: string; summary: string; content: string; score: number; image_queries?: string[] }
@@ -1391,7 +1332,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
           const articleId = saved.id;
           log(`    ✅ Article #${articleId} saved | score ${score.toFixed(1)}`, 'success');
 
-          // Use article-supplied image_queries (subject-aware) — no extra Groq call
           const imageQueries = Array.isArray(parsed.image_queries) && parsed.image_queries.length > 0
             ? parsed.image_queries
             : [];
@@ -1400,7 +1340,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
             pexelsKey, articleId, parsed.title, category, imageQueries, log, omdbKey
           );
 
-          // ── Publish only when ALL content is confirmed present ──────────
           const hasTitle   = parsed.title.trim().length > 5;
           const hasContent = parsed.content.trim().length > 100;
           const hasSummary = parsed.summary.trim().length > 10;
@@ -1409,7 +1348,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
           const readyToPublish = hasTitle && hasContent && hasSummary && hasImages && goodScore;
 
           if (readyToPublish) {
-            // Double-check raw_content is actually saved in DB before publishing
             const { data: verify } = await supabase
               .from('articles')
               .select('raw_content, image_url')
@@ -1480,10 +1418,8 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
     }
   };
 
-
   // ════════════════════════════════════════════════════════════════════════════
-  // HISTORY PIPELINE — Manual trigger for weekly deep-dive history articles
-  // Same quality as the cron job — 1200-1500 words, 8 images, Arjun Mehta voice
+  // HISTORY PIPELINE
   // ════════════════════════════════════════════════════════════════════════════
   const handleGenerateHistory = async () => {
     const groqKeys: string[] = [
@@ -1503,7 +1439,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
     setHistoryLogs([]);
     clearSessionImageCache();
 
-    // Key rotation state — same pattern as main pipeline
     let keyIndex = 0;
     const keyExhausted: Record<number, number> = {};
     const keyIndexRef = { value: 0 };
@@ -1515,10 +1450,9 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
       }]);
     };
 
-    // Use the SAME groqRequest function as main pipeline — has full key rotation
     const hGroqReq = (messages: { role: string; content: string }[], maxTokens: number, label: string) =>
       groqRequest(
-        groqKeys[keyIndexRef.value],  // always use current key from ref
+        groqKeys[keyIndexRef.value],
         messages,
         maxTokens,
         label,
@@ -1526,14 +1460,12 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
         groqKeys,
         keyExhausted,
         keyIndexRef
-        // no pipelineSignal for history — it has its own stop mechanism
       );
 
     try {
       hlog('📜 Starting Hidden History pipeline...', 'info');
       hlog(`📚 ${HISTORY_TOPIC_POOL.length} topic categories available`, 'info');
 
-      // ── Step 1: Get previously covered titles ──────────────────────────────
       const { data: prev } = await supabase
         .from('articles')
         .select('title')
@@ -1544,12 +1476,10 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
       const prevTitles = (prev ?? []).map((a: any) => `- ${a.title}`).join('\n');
       hlog(`📖 Previously covered: ${prev?.length ?? 0} history articles`, 'info');
 
-      // ── Step 2: Pick topic theme + specific subject ─────────────────────────
       const topicCategory = HISTORY_TOPIC_POOL[Math.floor(Math.random() * HISTORY_TOPIC_POOL.length)];
       hlog(`\n🎯 Topic theme: "${topicCategory}"`, 'info');
       hlog('🤖 Picking specific historical subject...', 'progress');
 
-      // CALL 1: Pick subject — short call, low tokens, same format as main pipeline
       const subjectRaw = await hGroqReq([
         {
           role: 'system',
@@ -1568,8 +1498,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
 
       await sleep(3000);
 
-      // ── Step 3: Write article in TWO parts (avoids token truncation) ─────────
-      // Part A: Hook + Setup + Rise (first half ~600-700 words)
       hlog('\n✍️  Writing Part 1 of article...', 'progress');
 
       const part1Raw = await hGroqReq([
@@ -1601,7 +1529,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
 
       await sleep(4000);
 
-      // Part B: Forgotten + Mystery + Why It Matters + Closer (second half ~500-600 words)
       hlog('✍️  Writing Part 2 of article...', 'progress');
 
       const part2Raw = await hGroqReq([
@@ -1630,14 +1557,12 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
       }
       hlog(`   ✅ Part 2: ${(part2Raw ?? '').split(/\s+/).length} words`, 'success');
 
-      // Combine both parts
       const fullContent = [part1Raw.trim(), (part2Raw ?? '').trim()].filter(Boolean).join('\n\n');
       const wordCount   = fullContent.split(/\s+/).length;
       hlog(`\n📝 Total: ${wordCount} words`, 'success');
 
       await sleep(3000);
 
-      // CALL 4: Get metadata (title, summary, image queries) — small separate call
       hlog('🏷  Generating title, summary, image queries...', 'progress');
 
       const metaRaw = await hGroqReq([
@@ -1658,7 +1583,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
         },
       ], 600, 'history:meta');
 
-      // Parse metadata — title/summary/score/images
       interface HistoryMeta { title: string; summary: string; score: number; image_queries: string[] }
       const meta = metaRaw ? extractJSON<HistoryMeta>(metaRaw) : null;
 
@@ -1669,7 +1593,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
 
       hlog(`   Title: "${title}"`, 'info');
 
-      // ── Step 5: Save to DB ──────────────────────────────────────────────────
       const { data: saved, error: saveErr } = await supabase
         .from('articles')
         .insert({
@@ -1693,14 +1616,12 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
       const articleId = (saved as any).id;
       hlog(`💾 Saved as article #${articleId}`, 'info');
 
-      // ── Step 6: Fetch 8 images ──────────────────────────────────────────────
       hlog('\n🖼  Fetching history images...', 'progress');
       const imageCount = await fetchAndSaveImages(
         pexelsKey, articleId, title, 'history', imgQ, hlog, omdbKey
       );
       hlog(`📸 ${imageCount} images saved`, imageCount >= HISTORY_MIN_IMAGES ? 'success' : 'warn');
 
-      // ── Step 7: Verify + publish ────────────────────────────────────────────
       if (score >= HISTORY_AUTO_PUBLISH_SCORE && imageCount >= HISTORY_MIN_IMAGES) {
         const { data: verify } = await supabase
           .from('articles').select('raw_content, image_url').eq('id', articleId).single();
@@ -1738,20 +1659,15 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
     }
   };
 
-
   const handleStop = () => {
     stopRef.current = true;
-    // Abort any in-flight Groq fetch immediately
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
-    // Cancel the countdown timer instantly
     if (countRef.current) { clearInterval(countRef.current); setCountdown(0); }
     setGenerating(false);
     setBatchInfo('');
     addLog('⛔ Pipeline stopped immediately.', 'error');
   };
 
-
-  // ── Re-fetch images for selected article ────────────────────────────────
   const handleRefetchImages = async () => {
     if (!selectedArticle) return;
     setRefetchingImages(true);
@@ -1761,7 +1677,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
       const omdbKey   = process.env.NEXT_PUBLIC_OMDB_API_KEY   as string | undefined;
       if (!pexelsKey) { setError('NEXT_PUBLIC_PEXELS_API_KEY not set'); return; }
 
-      // Delete existing images first so we don't double-up
       await supabase.from('article_images').delete().eq('article_id', selectedArticle.id);
       await supabase.from('articles').update({ image_url: null }).eq('id', selectedArticle.id);
 
@@ -1791,7 +1706,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
     }
   };
 
-  // ── Manual image upload ──────────────────────────────────────────────────
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedArticle || !e.target.files?.length) return;
     const file = e.target.files[0];
@@ -1886,8 +1800,8 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
 
   const scoreColor = (s: number | null) =>
     s === null ? 'text-gray-500 bg-gray-100' :
-    s >= 8 ? 'text-green-600 bg-green-50' : 
-    s >= 7 ? 'text-yellow-600 bg-yellow-50' : 
+    s >= 8 ? 'text-green-600 bg-green-50' :
+    s >= 7 ? 'text-yellow-600 bg-yellow-50' :
     'text-gray-500 bg-gray-100';
   const logColor = (t: GenLog['type']) =>
     t === 'success' ? 'text-green-400' : t === 'error' ? 'text-red-400' :
@@ -1968,13 +1882,9 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
         )}
       </Card>
 
-      {/* ══════════════════════════════════════════════════════════════════
-           HISTORY PIPELINE SECTION
-      ══════════════════════════════════════════════════════════════════ */}
-      <Card className="p-5 border-2 border-amber-200 bg-amber-50/30">
+      {/* ── HISTORY PIPELINE ─────────────────────────────────────────────── */}
+      <Card className="mb-6 p-5 border-2 border-amber-200 bg-amber-50/30">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-
-          {/* Left: info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-2xl">📜</span>
@@ -1989,8 +1899,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
               ⏱ Takes ~3–5 minutes · Uses 1 Groq key slot · Avoids previously covered topics automatically
             </p>
           </div>
-
-          {/* Right: button */}
           <div className="shrink-0">
             {historyGenerating ? (
               <div className="flex items-center gap-3">
@@ -2008,7 +1916,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
           </div>
         </div>
 
-        {/* History logs */}
         {historyLogs.length > 0 && (
           <div className="mt-4 bg-amber-950 rounded-xl p-3 max-h-48 overflow-y-auto font-mono text-xs leading-[1.7]">
             {historyLogs.map(l => (
@@ -2025,7 +1932,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
           </div>
         )}
 
-        {/* Result banner */}
         {historyDone && (
           <div className={`mt-4 p-3 rounded-xl text-sm font-medium whitespace-pre-wrap ${
             historyDone.startsWith('✅')
@@ -2249,7 +2155,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
                   </div>
                 </div>
 
-                {/* ── Image suggestions ─────────────────────────────────── */}
                 {images.length < 2 && (
                   <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
                     <p className="text-xs font-bold text-amber-700 mb-2">
@@ -2284,7 +2189,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
                   </div>
                 )}
 
-                {/* ── Manual upload ─────────────────────────────────────── */}
                 {images.length < 5 && (
                   <label className="block mb-4 cursor-pointer">
                     <div className={`border-2 border-dashed rounded-xl p-4 text-center transition ${uploading ? 'border-blue-300 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'}`}>
@@ -2296,7 +2200,6 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
                   </label>
                 )}
 
-                {/* ── Image grid ────────────────────────────────────────── */}
                 {images.length > 0 ? (
                   <div className="grid grid-cols-2 gap-3">
                     {images.map((img, idx) => (
