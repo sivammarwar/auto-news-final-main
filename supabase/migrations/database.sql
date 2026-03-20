@@ -671,3 +671,17 @@ CREATE TABLE topic_pool (
 CREATE INDEX idx_topic_pool_subcategory_unused 
   ON topic_pool(subcategory, is_used) 
   WHERE is_used = false;
+
+-- Add bulk scheduler settings to the settings table
+INSERT INTO public.settings (key, value) VALUES
+  ('bulk_schedule_enabled',  'false'),
+  ('bulk_schedule_hour_utc', '3'),
+  ('bulk_schedule_status',   'idle'),
+  ('bulk_schedule_last_run', ''),
+  ('bulk_schedule_next_run', '')
+ON CONFLICT (key) DO NOTHING;
+
+-- Verify
+SELECT key, value FROM public.settings
+WHERE key LIKE 'bulk_%'
+ORDER BY key;
