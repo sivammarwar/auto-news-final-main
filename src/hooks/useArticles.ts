@@ -95,7 +95,7 @@ export function useRelatedArticles(article: Article | null, limit = 4) {
       // If subcategory match returned too few, backfill from the same category
       if (article.subcategory && (data?.length ?? 0) < limit) {
         const needed = limit - (data?.length ?? 0);
-        const existingIds = [article.id, ...(data ?? []).map((a: Article) => a.id)];
+        const existingIds = [article.id, ...((data as unknown as Article[]) ?? []).map((a: Article) => a.id)];
         const { data: extra } = await supabase
           .from('articles')
           .select(FIELDS)
