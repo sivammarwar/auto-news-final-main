@@ -2,7 +2,7 @@ name: Generate Articles
 
 on:
   schedule:
-    - cron: "45 13 * * *"  # 1:45 PM UTC daily
+    - cron: "15 16 * * *"  # 1:45 PM UTC daily
   workflow_dispatch:        # manual trigger button in GitHub Actions tab
 
 jobs:
