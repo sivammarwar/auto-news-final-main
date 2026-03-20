@@ -35,17 +35,15 @@ export function useArticles(slug?: string, limit = 50) {
 
       if (slug) {
         if (isSubcategory(slug)) {
-          // Route by subcategory (e.g. /category/ancient-civilizations)
           query = query.eq('subcategory', slug);
         } else {
-          // Route by top-level category (e.g. /category/history)
           query = query.eq('category', slug);
         }
       }
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data as Article[]) ?? [];
+      return (data as unknown as Article[]) ?? [];  // ← fix: added 'unknown' intermediate cast
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -64,7 +62,7 @@ export function useArticle(id: string) {
 
       if (error?.code === 'PGRST116') return null;
       if (error) throw error;
-      return data as Article;
+      return data as unknown as Article;  // ← fix: added 'unknown' intermediate cast
     },
     enabled: !!id,
     staleTime: 10 * 60 * 1000,
@@ -77,8 +75,6 @@ export function useRelatedArticles(article: Article | null, limit = 4) {
     queryFn: async () => {
       if (!article) return [];
 
-      // Prefer matching by subcategory for tighter relevance;
-      // fall back to category if subcategory is not set.
       let query = supabase
         .from('articles')
         .select(FIELDS)
@@ -108,10 +104,10 @@ export function useRelatedArticles(article: Article | null, limit = 4) {
           .not('id', 'in', `(${existingIds.join(',')})`)
           .order('score', { ascending: false })
           .limit(needed);
-        return ([...(data ?? []), ...(extra ?? [])] as Article[]);
+        return ([...(data ?? []), ...(extra ?? [])] as unknown as Article[]);  // ← fix: added 'unknown' intermediate cast
       }
 
-      return (data as Article[]) ?? [];
+      return (data as unknown as Article[]) ?? [];  // ← fix: added 'unknown' intermediate cast
     },
     enabled: !!article,
     staleTime: 10 * 60 * 1000,
