@@ -8,17 +8,17 @@ import { Upload, Trash2, Zap, RefreshCw, CheckSquare, Square, X, Clock, Globe } 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Article {
-  id: number;
-  title: string;
-  summary: string;
-  raw_content?: string;
-  category: string;
-  source_name: string;
-  score: number;
-  is_published: boolean;
-  is_draft: boolean;
-  admin_notes?: string;
-}
+    id: number;
+    title: string;
+    summary: string;
+    raw_content?: string | null;
+    category: string;
+    source_name: string;
+    score: number;
+    is_published: boolean;
+    is_draft: boolean;
+    admin_notes?: string | null;
+  }
 interface ArticleImage {
   id: number;
   image_url: string;
