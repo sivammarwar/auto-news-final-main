@@ -209,7 +209,7 @@ async function groqRequest(
           log(`🔴 [${label}]${keyLabel} Daily limit hit — rotating to next key`, 'warn');
           exhausted[idxRef.value] = Date.now() + 24 * 60 * 60 * 1000;
           if (keys.length === 1) {
-            log(`⚠️ Only 1 Groq key — add VITE_GROQ_API_KEY_2 for seamless rotation`, 'warn');
+            log(`⚠️ Only 1 Groq key — add NEXT_PUBLIC_GROQ_API_KEY_2 for seamless rotation`, 'warn');
             await sleep(60_000);
           }
           continue; // try next key immediately
@@ -1059,16 +1059,16 @@ export default function AdminPanel() {
     const omdbKey   = process.env.NEXT_PUBLIC_OMDB_API_KEY as string | undefined;
 
     if (groqKeys.length === 0) {
-      setError('Missing VITE_GROQ_API_KEY in environment variables. Add it in Vercel → Settings → Environment Variables and redeploy.');
+      setError('Missing NEXT_PUBLIC_GROQ_API_KEY in environment variables. Add it in Vercel → Settings → Environment Variables and redeploy.');
       return;
     }
     if (!pexelsKey) {
       setError(
-        'Missing VITE_PEXELS_API_KEY.\n\n' +
+        'Missing NEXT_PUBLIC_PEXELS_API_KEY.\n\n' +
         '1. Go to pexels.com/developers\n' +
         '2. Click "Your apps" → "New Application"\n' +
         '3. Copy the Access Key (not Secret Key)\n' +
-        '4. Add VITE_PEXELS_API_KEY in Vercel → Settings → Environment Variables and redeploy.'
+        '4. Add NEXT_PUBLIC_PEXELS_API_KEY in Vercel → Settings → Environment Variables and redeploy.'
       );
       return;
     }
@@ -1495,8 +1495,8 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
     const pexelsKey = process.env.NEXT_PUBLIC_PEXELS_API_KEY as string | undefined;
     const omdbKey   = process.env.NEXT_PUBLIC_OMDB_API_KEY   as string | undefined;
 
-    if (groqKeys.length === 0) { setError('Missing VITE_GROQ_API_KEY'); return; }
-    if (!pexelsKey)            { setError('Missing VITE_PEXELS_API_KEY'); return; }
+    if (groqKeys.length === 0) { setError('Missing NEXT_PUBLIC_GROQ_API_KEY'); return; }
+    if (!pexelsKey)            { setError('Missing NEXT_PUBLIC_PEXELS_API_KEY'); return; }
 
     setHistoryGenerating(true);
     setHistoryDone(null);
@@ -1759,7 +1759,7 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
     try {
       const pexelsKey = process.env.NEXT_PUBLIC_PEXELS_API_KEY as string | undefined;
       const omdbKey   = process.env.NEXT_PUBLIC_OMDB_API_KEY   as string | undefined;
-      if (!pexelsKey) { setError('VITE_PEXELS_API_KEY not set'); return; }
+      if (!pexelsKey) { setError('NEXT_PUBLIC_PEXELS_API_KEY not set'); return; }
 
       // Delete existing images first so we don't double-up
       await supabase.from('article_images').delete().eq('article_id', selectedArticle.id);
