@@ -14,9 +14,9 @@ interface Article {
     raw_content?: string | null;
     category: string;
     source_name: string;
-    score: number;
-    is_published: boolean;
-    is_draft: boolean;
+    score: number | null;
+    is_published: boolean | null;
+    is_draft: boolean | null;
     admin_notes?: string | null;
   }
 interface ArticleImage {
