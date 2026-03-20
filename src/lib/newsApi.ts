@@ -1,46 +1,47 @@
-const NEWS_API_KEY = process.env.NEWS_API_KEY;
-const NEWS_API_URL = 'https://newsapi.org/v2';
+// newsapi.ts is no longer used for fetching external news.
+// This file now exports history-specific helpers used across the pipeline.
 
-const QUERIES: Record<string, string> = {
-  cricket:    'cricket news',
-  bollywood:  'bollywood OR hindi cinema OR indian films',
-  technology: 'technology OR AI OR startups OR software',
+// ─── History subcategory slugs ────────────────────────────────────────────────
+export const HISTORY_SUBCATEGORY_SLUGS = [
+  'ancient-civilizations',
+  'medieval-feudal',
+  'age-of-exploration',
+  'revolutions-politics',
+  'world-wars-conflicts',
+  'colonial-imperial',
+  'human-rights-movements',
+  'science-technology',
+  'religion-philosophy',
+  'cultural-social',
+  'economic-trade',
+  'military-warfare',
+  'regional-history',
+  'archaeology-mysteries',
+  'famous-figures',
+] as const;
+
+export type HistorySubcategory = (typeof HISTORY_SUBCATEGORY_SLUGS)[number];
+
+// ─── Era labels ───────────────────────────────────────────────────────────────
+export const ERA_LABELS: Record<string, string> = {
+  ancient:      'Ancient (before 500 AD)',
+  medieval:     'Medieval (500–1500 AD)',
+  'early-modern': 'Early Modern (1500–1800)',
+  modern:       'Modern (1800–present)',
+  all:          'All eras',
 };
 
-export const fetchNewsFromNewsAPI = async (category: string) => {
-  if (!NEWS_API_KEY) {
-    console.log('   ⚠️  NEWS_API_KEY not set, skipping NewsAPI');
-    return [];
-  }
+// ─── Validate that a slug is a known history subcategory ─────────────────────
+export function isHistorySubcategory(slug: string): slug is HistorySubcategory {
+  return (HISTORY_SUBCATEGORY_SLUGS as readonly string[]).includes(slug);
+}
 
-  try {
-    const params = new URLSearchParams({
-      q:        QUERIES[category] || category,
-      sortBy:   'publishedAt',
-      language: 'en',
-      pageSize: '30',
-      apiKey:   NEWS_API_KEY,
-    });
+// ─── Slugify a subcategory label for use in URLs ──────────────────────────────
+export function labelToSlug(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
 
-    const res = await fetch(`${NEWS_API_URL}/everything?${params}`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) throw new Error(`NewsAPI responded with ${res.status}`);
-    const data = await res.json();
-
-    return (data.articles || [])
-      .filter((a: any) => a.url && a.title && a.title !== '[Removed]')
-      .map((article: any) => ({
-        title:         article.title,
-        sourceUrl:     article.url,
-        sourceName:    article.source?.name || 'News API',
-        rawContent:    article.content || article.description || '',
-        imageUrl:      article.urlToImage || null,
-        publishedDate: new Date(article.publishedAt),
-        category,
-      }));
-  } catch (error: any) {
-    console.error(`   ✗ NewsAPI error for ${category}: ${error.message}`);
-    return [];
-  }
-};
+// ─── Build a readable title from a slug ──────────────────────────────────────
+export function slugToLabel(slug: string): string {
+  return slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}

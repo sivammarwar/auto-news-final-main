@@ -6,18 +6,21 @@ import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const CATEGORIES = [
-  { label: 'Cricket',        emoji: '🏏', path: '/category/cricket' },
-  { label: 'Bollywood',      emoji: '🎬', path: '/category/bollywood' },
-  { label: 'Technology',     emoji: '💻', path: '/category/technology' },
-  { label: 'Viral Today',    emoji: '🔥', path: '/category/viral' },
-  { label: 'Business',       emoji: '📈', path: '/category/business' },
-  { label: 'Sports',         emoji: '🏆', path: '/category/sports' },
-  { label: 'India',          emoji: '🇮🇳', path: '/category/india' },
-  { label: 'World',          emoji: '🌍', path: '/category/world' },
-  { label: 'Health',         emoji: '❤️',  path: '/category/health' },
-  { label: 'Science',        emoji: '🚀', path: '/category/science' },
-  { label: 'Hidden History', emoji: '📜', path: '/category/history' },
-  { label: 'Stocks',         emoji: '📊', path: '/category/stocks' },
+  { label: 'Ancient Civilizations',   emoji: '🏛️', path: '/category/ancient-civilizations' },
+  { label: 'Medieval & Feudal',        emoji: '⚔️',  path: '/category/medieval-feudal' },
+  { label: 'Age of Exploration',       emoji: '🧭', path: '/category/age-of-exploration' },
+  { label: 'Revolutions & Politics',   emoji: '✊',  path: '/category/revolutions-politics' },
+  { label: 'World Wars & Conflicts',   emoji: '🎖️', path: '/category/world-wars-conflicts' },
+  { label: 'Colonial & Imperial',      emoji: '🌐', path: '/category/colonial-imperial' },
+  { label: 'Human Rights Movements',   emoji: '🕊️', path: '/category/human-rights-movements' },
+  { label: 'Science & Technology',     emoji: '🔬', path: '/category/science-technology' },
+  { label: 'Religion & Philosophy',    emoji: '📿', path: '/category/religion-philosophy' },
+  { label: 'Cultural & Social',        emoji: '🎭', path: '/category/cultural-social' },
+  { label: 'Economic & Trade',         emoji: '🏺', path: '/category/economic-trade' },
+  { label: 'Military & Warfare',       emoji: '🗡️', path: '/category/military-warfare' },
+  { label: 'Regional History',         emoji: '🗺️', path: '/category/regional-history' },
+  { label: 'Archaeology & Mysteries',  emoji: '🔍', path: '/category/archaeology-mysteries' },
+  { label: 'Famous Figures & Leaders', emoji: '👑', path: '/category/famous-figures' },
 ];
 
 const SiteHeader = () => {
@@ -56,7 +59,7 @@ const SiteHeader = () => {
             href="/"
             className="font-bold text-xl tracking-tightest text-foreground hover:text-primary transition-colors shrink-0"
           >
-            SIGNAL
+            SIGNAL <span className="font-mono text-[11px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">History</span>
           </Link>
 
           {/* Desktop nav */}
@@ -78,7 +81,7 @@ const SiteHeader = () => {
                   dropdownOpen ? 'text-primary' : 'text-muted-foreground'
                 }`}
               >
-                Categories
+                Explore History
                 <svg
                   className={`w-3 h-3 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`}
                   fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}
@@ -94,7 +97,7 @@ const SiteHeader = () => {
                     animate={{ opacity: 1, y: 0,  scale: 1 }}
                     exit={{ opacity: 0,  y: -6,   scale: 0.97 }}
                     transition={{ duration: 0.14 }}
-                    className="absolute right-0 mt-3 w-72 bg-background border border-border rounded-xl shadow-xl overflow-hidden"
+                    className="absolute right-0 mt-3 w-96 bg-background border border-border rounded-xl shadow-xl overflow-hidden"
                     role="menu"
                   >
                     <div className="p-2 grid grid-cols-2 gap-0.5">
@@ -151,7 +154,7 @@ const SiteHeader = () => {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'tween', duration: 0.24, ease: 'easeInOut' }}
-              className="fixed top-14 right-0 bottom-0 z-50 w-[80vw] max-w-xs bg-background border-l border-border overflow-y-auto md:hidden"
+              className="fixed top-14 right-0 bottom-0 z-50 w-[85vw] max-w-xs bg-background border-l border-border overflow-y-auto md:hidden"
             >
               <div className="p-4">
                 <Link
@@ -164,7 +167,7 @@ const SiteHeader = () => {
                 </Link>
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground px-3 py-2">
-                  Categories
+                  Explore History
                 </p>
 
                 {CATEGORIES.map((cat, i) => (
@@ -172,7 +175,7 @@ const SiteHeader = () => {
                     key={cat.path}
                     initial={{ opacity: 0, x: 12 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.04 + i * 0.025, duration: 0.18 }}
+                    transition={{ delay: 0.04 + i * 0.02, duration: 0.18 }}
                   >
                     <Link
                       href={cat.path}

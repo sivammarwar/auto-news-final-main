@@ -1,0 +1,293 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import {
+  loadAllRegisteredKeys,
+  loadCoveredTitles,
+  reserveTopic,
+  confirmTopic,
+  releaseTopic,
+  filterAvailableTopics,
+} from '@/lib/topicRegistry';
+import { HISTORY_CATEGORIES } from '@/lib/historyCategories';
+
+function isAuthorized(req: NextRequest): boolean {
+  return req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`;
+}
+
+function getSupabase() {
+  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+}
+
+const GROQ_TIMEOUT_MS        = 40_000;
+const INTER_ARTICLE_PAUSE_MS = 8_000;
+const MAX_RETRIES            = 5;
+const AUTO_PUBLISH_SCORE     = 7.5;
+const TARGET_IMAGES          = 6;
+const MIN_IMAGES_TO_PUBLISH  = 2;
+const IMAGE_MIN_WIDTH        = 800;
+
+const AUTHOR = {
+  name:    'Arjun Mehta',
+  tagline: 'Senior Historian & Correspondent, Signal History',
+  bio: `Historian and investigative journalist. Sharp, no-nonsense style. Covers both famous events
+AND hidden chapters. 100% original writing. Ends every article with a one-liner that sticks.`,
+};
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Promise<string> {
+  const { data } = await db.from('settings').select('value').eq('key', key).single();
+  return data?.value ?? '';
+}
+
+async function setSetting(db: ReturnType<typeof getSupabase>, key: string, value: string) {
+  await db.from('settings').upsert({ key, value, updated_at: new Date().toISOString() });
+}
+
+async function groqRequest(messages: { role: string; content: string }[], maxTokens: number): Promise<string | null> {
+  const keys = [process.env.GROQ_API_KEY, process.env.GROQ_API_KEY_2, process.env.GROQ_API_KEY_3].filter(Boolean) as string[];
+  if (keys.length === 0) throw new Error('No GROQ_API_KEY set');
+  for (let attempt = 0; attempt < MAX_RETRIES * keys.length; attempt++) {
+    const key = keys[attempt % keys.length];
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), GROQ_TIMEOUT_MS);
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, max_tokens: maxTokens, temperature: 0.75 }),
+      });
+      clearTimeout(t);
+      if (res.status === 429) { await sleep(62_000); continue; }
+      if (!res.ok) { await sleep(6000); continue; }
+      const data = await res.json();
+      return data?.choices?.[0]?.message?.content?.trim() ?? null;
+    } catch { clearTimeout(t); await sleep(4000); }
+  }
+  return null;
+}
+
+function extractJSON<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/^`{1,3}(?:json)?\s*/i, '').replace(/\s*`{1,3}$/g, '').trim();
+  const m = cleaned.match(/\{[\s\S]*\}/);
+  try { return JSON.parse(m?.[0] ?? cleaned) as T; } catch { return null; }
+}
+
+async function fetchPexels(query: string, count = 2): Promise<any[]> {
+  const key = process.env.PEXELS_API_KEY;
+  if (!key) return [];
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${count * 5}&orientation=landscape`,
+      { signal: ctrl.signal, headers: { Authorization: key } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.photos ?? []).filter((p: any) => p.width >= IMAGE_MIN_WIDTH).slice(0, count);
+  } catch { return []; }
+}
+
+async function saveImages(db: ReturnType<typeof getSupabase>, articleId: number, title: string, subcategory: string, imageQueries: string[]): Promise<number> {
+  const catConfig = HISTORY_CATEGORIES[subcategory];
+  const queries   = [...imageQueries, ...(catConfig?.imageQueries ?? [])];
+  const photos: any[] = [];
+  const seen = new Set<string>();
+  for (const q of queries.slice(0, 6)) {
+    if (photos.length >= TARGET_IMAGES) break;
+    const results = await fetchPexels(q, 2);
+    for (const p of results) {
+      const pid = `pexels_${p.id}`;
+      if (!seen.has(pid)) { seen.add(pid); photos.push(p); }
+    }
+    await sleep(300);
+  }
+  if (photos.length === 0) return 0;
+  const rows = photos.slice(0, TARGET_IMAGES).map((p, i) => ({
+    article_id: articleId, image_url: p.src.large2x || p.src.large,
+    alt_text: p.alt || title, position: i, width: p.width, height: p.height,
+    size_kb: 0, photographer: p.photographer ?? null,
+    photographer_url: p.photographer_url ?? null, image_source: 'pexels',
+  }));
+  const { error } = await db.from('article_images').insert(rows);
+  if (error) return 0;
+  await db.from('articles').update({ image_url: rows[0].image_url }).eq('id', articleId);
+  return rows.length;
+}
+
+export async function POST(req: NextRequest) {
+  if (!isAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const db   = getSupabase();
+  const body = await req.json().catch(() => ({}));
+
+  const isManual: boolean            = body?.manual === true;
+  const targetSubcategory: string | null = body?.subcategory ?? null;
+  const articlesPerRun: number       = body?.articlesPerRun ?? 2;
+
+  // ── Schedule gate (skipped for manual triggers) ───────────────────────────
+  if (!isManual) {
+    const enabled = await getSetting(db, 'schedule_enabled');
+    if (enabled !== 'true') {
+      return NextResponse.json({ success: true, skipped: true, reason: 'Schedule disabled' }, { status: 200 });
+    }
+    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '2', 10);
+    const currentHour    = new Date().getUTCHours();
+    if (currentHour !== configuredHour) {
+      return NextResponse.json({
+        success: true, skipped: true,
+        reason: `Not scheduled hour. Configured: ${configuredHour}:00 UTC, Current: ${currentHour}:00 UTC`,
+      }, { status: 200 });
+    }
+  }
+
+  await setSetting(db, 'schedule_status', 'running');
+  await setSetting(db, 'schedule_last_run', new Date().toISOString());
+
+  const results = {
+    total: 0, published: 0, drafts: 0, skipped: 0, errors: 0,
+    details: [] as { subcategory: string; title: string; status: string }[],
+  };
+
+  try {
+    const allKeys        = Object.keys(HISTORY_CATEGORIES);
+    const registeredKeys = await loadAllRegisteredKeys();
+
+    let targetKeys: string[];
+    if (targetSubcategory && HISTORY_CATEGORIES[targetSubcategory]) {
+      targetKeys = [targetSubcategory];
+    } else {
+      const available = allKeys.filter(k => filterAvailableTopics(HISTORY_CATEGORIES[k].topicPool, registeredKeys[k] ?? new Set()).length > 0);
+      const pick = available.length > 0 ? available[Math.floor(Math.random() * available.length)] : allKeys[0];
+      targetKeys = [pick];
+    }
+
+    for (const subcatKey of targetKeys) {
+      const catConfig = HISTORY_CATEGORIES[subcatKey];
+      const myKeys    = registeredKeys[subcatKey] ?? new Set<string>();
+      const available = filterAvailableTopics(catConfig.topicPool, myKeys);
+
+      if (available.length === 0) {
+        results.skipped++;
+        results.details.push({ subcategory: subcatKey, title: '', status: 'pool_exhausted' });
+        continue;
+      }
+
+      const coveredTitles  = await loadCoveredTitles(subcatKey, 30);
+      const selectedTopics = available.slice(0, articlesPerRun);
+
+      for (const topic of selectedTopics) {
+        const { ok: reserved, key: topicKey } = await reserveTopic(subcatKey, topic);
+        if (!reserved) {
+          results.skipped++;
+          results.details.push({ subcategory: subcatKey, title: topic, status: 'already_reserved' });
+          continue;
+        }
+
+        try {
+          await sleep(2000);
+          const part1 = await groqRequest([
+            {
+              role: 'system',
+              content:
+                `You are ${AUTHOR.name}, ${AUTHOR.tagline}. ${AUTHOR.bio}\n\n` +
+                `TOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n` +
+                (coveredTitles.length > 0 ? `ALREADY COVERED:\n${coveredTitles.slice(0, 20).map(t => `- ${t}`).join('\n')}\n\n` : '') +
+                `## [Most surprising fact]\n(2-3 sentences)\n\n## What Everyone Knows\n(100-150 words)\n\n## What History Actually Shows\n(300-400 words, bold key facts)\n\nRULES: Paragraphs \\n\\n. No bullets. Original voice. Return text only.`,
+            },
+            { role: 'user', content: `Write Part 1: "${topic}"` },
+          ], 1500);
+
+          if (!part1 || part1.length < 200) {
+            await releaseTopic(subcatKey, topicKey);
+            results.errors++;
+            results.details.push({ subcategory: subcatKey, title: topic, status: 'part1_failed' });
+            continue;
+          }
+
+          await sleep(4000);
+          const part2 = await groqRequest([
+            {
+              role: 'system',
+              content: `You are ${AUTHOR.name}. Second half for: "${topic}"\n\n## The Part That Got Buried\n(200-250 words)\n\n## The Ripple Effect\n(150-200 words)\n\n## The Line That Says It All\n(1 sentence)\n\nOriginal voice. Return text only.`,
+            },
+            { role: 'user', content: `Write Part 2: "${topic}"` },
+          ], 1200);
+
+          const fullContent = [part1.trim(), (part2 ?? '').trim()].filter(Boolean).join('\n\n');
+
+          await sleep(3000);
+          const metaRaw = await groqRequest([
+            { role: 'system', content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
+            { role: 'user', content: `Metadata for: "${topic}"\nPreview: ${fullContent.substring(0, 400)}\nCompelling 10-18 word title, 3-sentence summary, score 0-10, 6 Pexels image queries. Raw JSON only.` },
+          ], 500);
+
+          interface Meta { title: string; summary: string; score: number; image_queries: string[] }
+          const meta    = extractJSON<Meta>(metaRaw);
+          const title   = meta?.title   ?? topic.substring(0, 200);
+          const summary = meta?.summary ?? fullContent.substring(0, 300).replace(/\n/g, ' ');
+          const score   = Math.min(10, Math.max(0, parseFloat(String(meta?.score ?? 8.0)) || 8.0));
+          const imgQ    = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 4);
+
+          const { data: saved, error: saveErr } = await db.from('articles').insert({
+            title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
+            summary: summary.substring(0, 500), raw_content: fullContent,
+            category: 'history', subcategory: subcatKey, score,
+            era: catConfig.era, difficulty: 'both',
+            published_date: new Date().toISOString(),
+            is_draft: true, is_published: false, image_url: null,
+            admin_notes: `Topic: "${topic}" | ${isManual ? 'Manual' : 'Auto cron'}`,
+          }).select('id').single();
+
+          if (saveErr) {
+            await releaseTopic(subcatKey, topicKey);
+            results.errors++;
+            results.details.push({ subcategory: subcatKey, title: topic, status: `save_failed: ${saveErr.message}` });
+            continue;
+          }
+
+          const articleId = (saved as any).id;
+          await confirmTopic(subcatKey, topicKey, title, articleId);
+          results.total++;
+
+          const imageCount = await saveImages(db, articleId, title, subcatKey, imgQ);
+
+          if (score >= AUTO_PUBLISH_SCORE && imageCount >= MIN_IMAGES_TO_PUBLISH) {
+            const { data: verify } = await db.from('articles').select('raw_content, image_url').eq('id', articleId).single();
+            if ((verify as any)?.raw_content?.length > 200 && (verify as any)?.image_url) {
+              await db.from('articles').update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() }).eq('id', articleId);
+              results.published++;
+              results.details.push({ subcategory: subcatKey, title, status: `published (score ${score.toFixed(1)})` });
+            } else {
+              results.drafts++;
+              results.details.push({ subcategory: subcatKey, title, status: 'draft' });
+            }
+          } else {
+            results.drafts++;
+            results.details.push({ subcategory: subcatKey, title, status: `draft (score ${score.toFixed(1)})` });
+          }
+
+          await sleep(INTER_ARTICLE_PAUSE_MS);
+
+        } catch (err: any) {
+          await releaseTopic(subcatKey, topicKey);
+          results.errors++;
+          results.details.push({ subcategory: subcatKey, title: topic, status: `error: ${err.message}` });
+        }
+      }
+    }
+
+    await setSetting(db, 'schedule_status', 'idle');
+    await setSetting(db, 'schedule_next_run', new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());
+
+    return NextResponse.json({ success: true, ...results }, { status: 200 });
+
+  } catch (err: any) {
+    await setSetting(db, 'schedule_status', 'error');
+    return NextResponse.json({ success: false, error: err.message, ...results }, { status: 500 });
+  }
+}
+
+export async function GET(req: NextRequest) { return POST(req); }

@@ -1,9 +1,18 @@
-name: Generate Articles
+name: Generate Articles (Full Pipeline)
 
 on:
   schedule:
-    - cron: "15 16 * * *"  # 9:45 PM IST daily
+    - cron: "15 16 * * 0"  # 9:45 PM IST every Sunday (UTC 16:15 Sunday = IST 21:45 Sunday)
   workflow_dispatch:
+    inputs:
+      articles_per_category:
+        description: "Articles per subcategory (default: 2, max: 5)"
+        required: false
+        default: "2"
+      dry_run:
+        description: "Dry run — generate but do not publish (true/false)"
+        required: false
+        default: "false"
 
 jobs:
   generate:
@@ -11,15 +20,23 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Trigger article generation
+      - name: Trigger full history generation pipeline
         run: |
-          echo "Starting article generation at $(date)"
+          echo "▶ Starting FULL history pipeline at $(date)"
+          echo "   Articles per category : ${{ github.event.inputs.articles_per_category || '2' }}"
+          echo "   Dry run               : ${{ github.event.inputs.dry_run || 'false' }}"
+
+          # Build body without heredoc indentation issues
+          ARTICLES_PER="${{ github.event.inputs.articles_per_category || '2' }}"
+          DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
+          BODY="{\"articlesPerCategory\":${ARTICLES_PER},\"dryRun\":${DRY_RUN}}"
 
           RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
             -L \
-            -X POST ${{ secrets.SITE_URL }}/api/cron/generate-articles \
+            -X POST "${{ secrets.SITE_URL }}/api/cron/generate-articles" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
+            -d "$BODY" \
             --max-time 21600)
 
           echo "HTTP Status: $RESPONSE"
@@ -27,8 +44,20 @@ jobs:
           cat /tmp/response.json
 
           if [ "$RESPONSE" != "200" ]; then
-            echo "❌ Pipeline failed with status $RESPONSE"
+            echo "❌ Full pipeline failed with status $RESPONSE"
             exit 1
           fi
 
-          echo "✅ Pipeline completed successfully"
+          echo "✅ Full pipeline completed successfully"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Pipeline finished at $(date)"
+          if command -v jq &> /dev/null; then
+            jq '.' /tmp/response.json 2>/dev/null || cat /tmp/response.json
+          else
+            cat /tmp/response.json
+          fi
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

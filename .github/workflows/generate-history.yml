@@ -1,0 +1,70 @@
+name: Generate History Articles
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # Every hour — API route decides whether to run based on admin panel settings
+  workflow_dispatch:
+    inputs:
+      subcategory:
+        description: "Target subcategory slug e.g. ancient-civilizations (blank = random)"
+        required: false
+        default: ""
+      manual:
+        description: "Set to true to bypass schedule check"
+        required: false
+        default: "false"
+
+jobs:
+  generate-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Trigger history article generation
+        run: |
+          echo "▶ Pinging generate-history at $(date)"
+
+          MANUAL="${{ github.event.inputs.manual || 'false' }}"
+          SUBCAT="${{ github.event.inputs.subcategory }}"
+
+          # Build body
+          if [ -n "$SUBCAT" ]; then
+            BODY="{\"manual\":${MANUAL},\"subcategory\":\"${SUBCAT}\"}"
+          else
+            BODY="{\"manual\":${MANUAL}}"
+          fi
+
+          RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -L \
+            -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            --max-time 7200)
+
+          echo "HTTP Status: $RESPONSE"
+          cat /tmp/response.json
+
+          if [ "$RESPONSE" != "200" ]; then
+            echo "❌ Failed with status $RESPONSE"
+            exit 1
+          fi
+
+          # Check if skipped (not the right hour)
+          SKIPPED=$(cat /tmp/response.json | grep -o '"skipped":true' || true)
+          if [ -n "$SKIPPED" ]; then
+            echo "⏭ Skipped — not the configured hour or schedule disabled"
+          else
+            echo "✅ Generation completed"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          if command -v jq &> /dev/null; then
+            jq '.' /tmp/response.json 2>/dev/null || cat /tmp/response.json
+          else
+            cat /tmp/response.json
+          fi
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

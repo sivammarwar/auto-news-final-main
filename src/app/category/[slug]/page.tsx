@@ -1,34 +1,93 @@
-'use client';
-
-import { use } from 'react';
+// src/app/category/[slug]/page.tsx
+import type { Metadata } from 'next';
+import { createClient } from '@supabase/supabase-js';
+import { notFound } from 'next/navigation';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import ArticleCard from '@/components/ArticleCard';
 import EmptyState from '@/components/EmptyState';
-import { useArticles } from '@/hooks/useArticles';
+import { buildCategoryMetadata, CATEGORY_REVALIDATE_SECONDS } from '@/lib/category-seo';
+import { Article } from '@/types/article';
+
+export const revalidate = CATEGORY_REVALIDATE_SECONDS;
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+const SUBCATEGORY_SLUGS = new Set([
+  'ancient-civilizations', 'medieval-feudal', 'age-of-exploration',
+  'revolutions-politics', 'world-wars-conflicts', 'colonial-imperial',
+  'human-rights-movements', 'science-technology', 'religion-philosophy',
+  'cultural-social', 'economic-trade', 'military-warfare',
+  'regional-history', 'archaeology-mysteries', 'famous-figures',
+]);
 
 const CATEGORY_META: Record<string, { name: string; emoji: string; description: string }> = {
-  cricket:    { name: 'Cricket',        emoji: '🏏', description: 'IPL, Tests, BCCI and everything on the pitch' },
-  bollywood:  { name: 'Bollywood',      emoji: '🎬', description: 'Box office, OTT, gossip and the drama behind the drama' },
-  technology: { name: 'Technology',     emoji: '💻', description: 'Startups, gadgets and the future of India Inc.' },
-  viral:      { name: 'Viral Today',    emoji: '🔥', description: "Stories the internet can't stop talking about" },
-  business:   { name: 'Business',       emoji: '📈', description: 'Markets, RBI, startups, funding and the economy' },
-  sports:     { name: 'Sports',         emoji: '🏆', description: 'Football, kabaddi, Olympics and more' },
-  india:      { name: 'India',          emoji: '🇮🇳', description: "Politics, policy and what's shaping the nation" },
-  world:      { name: 'World',          emoji: '🌍', description: 'Global news that matters to every Indian' },
-  health:     { name: 'Health',         emoji: '❤️',  description: "Medicine, wellness and India's healthcare story" },
-  science:    { name: 'Science',        emoji: '🚀', description: 'ISRO, discoveries, climate and the universe' },
-  history:    { name: 'Hidden History', emoji: '📜', description: 'The forgotten stories that rewrote the world' },
-  stocks:     { name: 'Stocks',         emoji: '📊', description: 'NSE, BSE, Nifty, Sensex, IPOs and smart money moves' },
+  'history':                { name: 'All History',               emoji: '📜', description: 'The history they taught you — and the history they buried.' },
+  'ancient-civilizations':  { name: 'Ancient Civilizations',     emoji: '🏛️', description: 'Egypt, Rome, Greece, Mesopotamia — the empires that built the world we live in.' },
+  'medieval-feudal':        { name: 'Medieval & Feudal',         emoji: '⚔️',  description: 'Kingdoms, crusades, plagues and the brutal reality behind the romantic legend.' },
+  'age-of-exploration':     { name: 'Age of Exploration',        emoji: '🧭', description: 'Columbus, Zheng He, trade routes and the maps that remade the world.' },
+  'revolutions-politics':   { name: 'Revolutions & Politics',    emoji: '✊',  description: 'French, American, Russian — and the revolutions the textbooks forgot.' },
+  'world-wars-conflicts':   { name: 'World Wars & Conflicts',    emoji: '🎖️', description: 'WWI, WWII, the Cold War and the millions whose stories were never told.' },
+  'colonial-imperial':      { name: 'Colonial & Imperial',       emoji: '🌐', description: 'Empires, trade, independence movements and the long shadow colonialism cast.' },
+  'human-rights-movements': { name: 'Human Rights Movements',    emoji: '🕊️', description: 'Civil rights, suffrage, abolition — the long fight for basic human dignity.' },
+  'science-technology':     { name: 'Science & Technology',      emoji: '🔬', description: 'Inventions, medicine, space — and the scientists history tried to erase.' },
+  'religion-philosophy':    { name: 'Religion & Philosophy',     emoji: '📿', description: 'Beliefs, myths, philosophers and the ideas that have moved civilizations.' },
+  'cultural-social':        { name: 'Cultural & Social',         emoji: '🎭', description: 'Art, fashion, food, language — the texture of lives lived across the centuries.' },
+  'economic-trade':         { name: 'Economic & Trade',          emoji: '🏺', description: 'The Silk Road, currency, banking and the commercial forces that shaped history.' },
+  'military-warfare':       { name: 'Military & Warfare',        emoji: '🗡️', description: 'Battles, tactics, espionage — the strategies that won and lost empires.' },
+  'regional-history':       { name: 'Regional History',          emoji: '🗺️', description: 'Asia, Africa, the Americas, Europe — the world beyond the Western narrative.' },
+  'archaeology-mysteries':  { name: 'Archaeology & Mysteries',   emoji: '🔍', description: 'Lost cities, buried artifacts, unsolved ruins — history still being uncovered.' },
+  'famous-figures':         { name: 'Famous Figures & Leaders',  emoji: '👑', description: 'Rulers, scientists, reformers — the real people behind the legends.' },
 };
 
-export default function CategoryPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
-  const { data: articles, isLoading } = useArticles(slug);
+// ─── generateMetadata ─────────────────────────────────────────────────────────
+export async function generateMetadata(
+  { params }: { params: Promise<{ slug: string }> }
+): Promise<Metadata> {
+  const { slug } = await params;
+  return buildCategoryMetadata(slug);
+}
 
-  const meta = CATEGORY_META[slug ?? ''] ?? {
-    name: slug ?? 'Category',
-    emoji: '📰',
+// ─── generateStaticParams — pre-builds all 16 category pages at deploy time ──
+export async function generateStaticParams() {
+  return [
+    { slug: 'history' },
+    ...Array.from(SUBCATEGORY_SLUGS).map(slug => ({ slug })),
+  ];
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default async function CategoryPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+
+  // Fetch articles server-side
+  let query = supabase
+    .from('articles')
+    .select('id, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
+    .eq('is_published', true)
+    .order('published_date', { ascending: false })
+    .limit(50);
+
+  if (slug === 'history') {
+    query = query.eq('category', 'history');
+  } else if (SUBCATEGORY_SLUGS.has(slug)) {
+    query = query.eq('subcategory', slug);
+  } else {
+    notFound();
+  }
+
+  const { data: articles } = await query;
+
+  const meta = CATEGORY_META[slug] ?? {
+    name:        slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    emoji:       '📜',
     description: '',
   };
 
@@ -36,30 +95,41 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
     <div className="min-h-screen bg-background flex flex-col">
       <SiteHeader />
       <main className="flex-1">
+
+        {/* Category hero */}
         <section className="border-b border-border">
           <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
             <div className="flex flex-col gap-2">
-              <span className="text-3xl sm:text-4xl" role="img" aria-label={meta.name}>{meta.emoji}</span>
+              <span className="text-3xl sm:text-4xl" role="img" aria-label={meta.name}>
+                {meta.emoji}
+              </span>
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-primary font-bold mb-1">Category</p>
-                <h1 className="font-bold tracking-tightest leading-none text-foreground" style={{ fontSize: 'clamp(2rem, 8vw, 5rem)' }}>
+                <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-primary font-bold mb-1">
+                  History
+                </p>
+                <h1
+                  className="font-bold tracking-tightest leading-none text-foreground"
+                  style={{ fontSize: 'clamp(2rem, 8vw, 5rem)' }}
+                >
                   {meta.name}
                 </h1>
               </div>
               {meta.description && (
-                <p className="text-muted-foreground text-sm sm:text-base max-w-xl mt-1 leading-relaxed">{meta.description}</p>
+                <p className="text-muted-foreground text-sm sm:text-base max-w-xl mt-1 leading-relaxed">
+                  {meta.description}
+                </p>
               )}
             </div>
           </div>
         </section>
 
+        {/* Articles grid */}
         <section className="max-w-screen-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
-          {isLoading ? (
-            <div className="py-16 text-center">
-              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground animate-pulse">Loading...</span>
-            </div>
-          ) : !articles?.length ? (
-            <EmptyState title={`No ${meta.name} articles yet`} message={`Fresh ${meta.name} stories are on their way. Check back soon.`} />
+          {!articles?.length ? (
+            <EmptyState
+              title={`No ${meta.name} articles yet`}
+              message={`Fresh ${meta.name} stories are on their way. Check back soon.`}
+            />
           ) : (
             <>
               <div className="mb-6">
@@ -69,7 +139,7 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0">
                 {articles.map((article, i) => (
-                  <ArticleCard key={article.id} article={article} index={i} />
+                  <ArticleCard key={article.id} article={article as Article} index={i} />
                 ))}
               </div>
             </>

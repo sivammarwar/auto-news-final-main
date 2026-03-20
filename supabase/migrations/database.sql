@@ -417,3 +417,241 @@ SELECT
 FROM pg_policies
 WHERE tablename IN ('articles', 'article_images')
 ORDER BY tablename, cmd;
+
+
+ALTER TABLE article_images
+ADD COLUMN IF NOT EXISTS photographer      TEXT,
+ADD COLUMN IF NOT EXISTS photographer_url  TEXT,
+ADD COLUMN IF NOT EXISTS image_source      TEXT,
+ADD COLUMN IF NOT EXISTS wiki_attribution  TEXT,
+ADD COLUMN IF NOT EXISTS wiki_license      TEXT,
+ADD COLUMN IF NOT EXISTS wiki_license_url  TEXT;
+
+
+-- ============================================================================
+-- HISTORY-ONLY MIGRATION
+-- Converts your news platform into a pure history content site.
+-- Run this in Supabase SQL Editor AFTER your existing migration.
+-- ============================================================================
+
+-- ── 1. ADD subcategory column to articles ────────────────────────────────────
+ALTER TABLE public.articles
+  ADD COLUMN IF NOT EXISTS subcategory TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_articles_subcategory
+  ON public.articles(subcategory);
+
+-- ── 2. ADD a check constraint so only valid history subcategories are stored ─
+-- (Optional but recommended — remove the DO block if you prefer no constraint)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'articles_subcategory_check'
+  ) THEN
+    ALTER TABLE public.articles
+      ADD CONSTRAINT articles_subcategory_check CHECK (
+        subcategory IS NULL OR subcategory IN (
+          'ancient-civilizations',
+          'medieval-feudal',
+          'age-of-exploration',
+          'revolutions-politics',
+          'world-wars-conflicts',
+          'colonial-imperial',
+          'human-rights-movements',
+          'science-technology',
+          'religion-philosophy',
+          'cultural-social',
+          'economic-trade',
+          'military-warfare',
+          'regional-history',
+          'archaeology-mysteries',
+          'famous-figures'
+        )
+      );
+  END IF;
+END $$;
+
+-- ── 3. ADD difficulty / era columns (useful for filtering on the frontend) ───
+ALTER TABLE public.articles
+  ADD COLUMN IF NOT EXISTS era        TEXT,   -- e.g. 'ancient', 'medieval', 'modern'
+  ADD COLUMN IF NOT EXISTS difficulty TEXT;   -- 'known' | 'hidden' | 'both'
+
+-- ── 4. REMOVE the unique constraint on source_url (already nullable in your
+--        latest migration, but make sure it is) ───────────────────────────────
+ALTER TABLE public.articles
+  DROP CONSTRAINT IF EXISTS articles_source_url_key;
+
+ALTER TABLE public.articles
+  ALTER COLUMN source_url DROP NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_source_url_unique
+  ON public.articles(source_url)
+  WHERE source_url IS NOT NULL;
+
+-- ── 5. SETTINGS — seed history category metadata ────────────────────────────
+INSERT INTO public.settings (key, value) VALUES
+  ('site_mode',        'history'),
+  ('site_name',        'Signal History'),
+  ('site_tagline',     'The history they taught you — and the history they buried.'),
+  ('auto_publish_score', '7.5'),
+  ('history_categories', '[
+    {"id":"ancient-civilizations",  "label":"Ancient Civilizations",   "emoji":"🏛️",  "era":"ancient"},
+    {"id":"medieval-feudal",        "label":"Medieval & Feudal",        "emoji":"⚔️",  "era":"medieval"},
+    {"id":"age-of-exploration",     "label":"Age of Exploration",       "emoji":"🧭",  "era":"early-modern"},
+    {"id":"revolutions-politics",   "label":"Revolutions & Politics",   "emoji":"✊",  "era":"modern"},
+    {"id":"world-wars-conflicts",   "label":"World Wars & Conflicts",   "emoji":"🎖️",  "era":"modern"},
+    {"id":"colonial-imperial",      "label":"Colonial & Imperial",      "emoji":"🌐",  "era":"modern"},
+    {"id":"human-rights-movements", "label":"Human Rights Movements",   "emoji":"🕊️",  "era":"modern"},
+    {"id":"science-technology",     "label":"Science & Technology",     "emoji":"🔬",  "era":"all"},
+    {"id":"religion-philosophy",    "label":"Religion & Philosophy",    "emoji":"📿",  "era":"all"},
+    {"id":"cultural-social",        "label":"Cultural & Social",        "emoji":"🎭",  "era":"all"},
+    {"id":"economic-trade",         "label":"Economic & Trade",         "emoji":"🏺",  "era":"all"},
+    {"id":"military-warfare",       "label":"Military & Warfare",       "emoji":"🗡️",  "era":"all"},
+    {"id":"regional-history",       "label":"Regional History",         "emoji":"🗺️",  "era":"all"},
+    {"id":"archaeology-mysteries",  "label":"Archaeology & Mysteries",  "emoji":"🔍",  "era":"all"},
+    {"id":"famous-figures",         "label":"Famous Figures & Leaders", "emoji":"👑",  "era":"all"}
+  ]')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+
+-- ── 6. VERIFICATION ──────────────────────────────────────────────────────────
+SELECT
+  'subcategory column'  AS check_item,
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'articles' AND column_name = 'subcategory') AS result
+UNION ALL SELECT
+  'era column',
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'articles' AND column_name = 'era')
+UNION ALL SELECT
+  'difficulty column',
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'articles' AND column_name = 'difficulty')
+UNION ALL SELECT
+  'site_mode setting',
+  EXISTS (SELECT 1 FROM public.settings WHERE key = 'site_mode');
+
+
+CREATE TABLE IF NOT EXISTS public.topic_registry (
+  id           BIGSERIAL PRIMARY KEY,
+  subcategory  TEXT NOT NULL,
+  topic_key    TEXT NOT NULL,
+  title        TEXT,
+  article_id   BIGINT REFERENCES public.articles(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(subcategory, topic_key)
+);
+
+CREATE INDEX idx_topic_registry_subcategory 
+  ON public.topic_registry(subcategory);
+
+ALTER TABLE public.topic_registry ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Topic registry is publicly readable"
+  ON public.topic_registry FOR SELECT USING (true);
+
+CREATE POLICY "Anon can insert topic registry"
+  ON public.topic_registry FOR INSERT WITH CHECK (true);
+
+
+-- ============================================================================
+-- TOPIC REGISTRY — safe re-run version
+-- Drops existing policies before recreating to avoid "already exists" errors
+-- ============================================================================
+
+-- Table (IF NOT EXISTS is safe to re-run)
+CREATE TABLE IF NOT EXISTS public.topic_registry (
+  id           BIGSERIAL PRIMARY KEY,
+  subcategory  TEXT NOT NULL,
+  topic_key    TEXT NOT NULL,
+  title        TEXT,
+  article_id   BIGINT REFERENCES public.articles(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(subcategory, topic_key)
+);
+
+-- Indexes (IF NOT EXISTS is safe to re-run)
+CREATE INDEX IF NOT EXISTS idx_topic_registry_subcategory ON public.topic_registry(subcategory);
+CREATE INDEX IF NOT EXISTS idx_topic_registry_key         ON public.topic_registry(topic_key);
+CREATE INDEX IF NOT EXISTS idx_topic_registry_article_id  ON public.topic_registry(article_id);
+
+-- RLS
+ALTER TABLE public.topic_registry ENABLE ROW LEVEL SECURITY;
+
+-- Drop first so re-runs never fail with "already exists"
+DROP POLICY IF EXISTS "Topic registry is publicly readable" ON public.topic_registry;
+DROP POLICY IF EXISTS "Anon can insert topic registry"      ON public.topic_registry;
+DROP POLICY IF EXISTS "Anon can update topic registry"      ON public.topic_registry;
+DROP POLICY IF EXISTS "Anon can delete topic registry"      ON public.topic_registry;
+
+CREATE POLICY "Topic registry is publicly readable"
+  ON public.topic_registry FOR SELECT USING (true);
+
+CREATE POLICY "Anon can insert topic registry"
+  ON public.topic_registry FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Anon can update topic registry"
+  ON public.topic_registry FOR UPDATE USING (true) WITH CHECK (true);
+
+CREATE POLICY "Anon can delete topic registry"
+  ON public.topic_registry FOR DELETE USING (true);
+
+-- Backfill existing history articles into the registry.
+-- ON CONFLICT DO NOTHING makes this safe to re-run any number of times.
+INSERT INTO public.topic_registry (subcategory, topic_key, title, article_id)
+SELECT
+  COALESCE(subcategory, 'unknown') AS subcategory,
+  array_to_string(
+    ARRAY(
+      SELECT word FROM unnest(
+        string_to_array(
+          regexp_replace(
+            regexp_replace(lower(title), '[^a-z0-9 ]', '', 'g'),
+            '\s+', ' ', 'g'
+          ),
+          ' '
+        )
+      ) AS word
+      WHERE length(word) > 3
+      ORDER BY word
+      LIMIT 6
+    ),
+    '-'
+  ) AS topic_key,
+  title,
+  id AS article_id
+FROM public.articles
+WHERE category = 'history'
+  AND title IS NOT NULL
+  AND title != ''
+ON CONFLICT (subcategory, topic_key) DO NOTHING;
+
+-- Verify
+SELECT
+  'topic_registry table' AS check_item,
+  EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'topic_registry') AS result
+UNION ALL
+SELECT 'row count',      (SELECT COUNT(*) FROM public.topic_registry) > 0
+UNION ALL
+SELECT 'policies count', (SELECT COUNT(*) FROM pg_policies WHERE tablename = 'topic_registry') = 4;
+
+
+-- ============================================================================
+-- SCHEDULE SETTINGS — controls when cron jobs run
+-- Run in Supabase SQL Editor
+-- ============================================================================
+
+-- Seed default schedule settings into the existing settings table
+INSERT INTO public.settings (key, value) VALUES
+  ('schedule_enabled',          'true'),
+  ('schedule_hour_utc',         '2'),       -- 2 AM UTC = 7:30 AM IST
+  ('schedule_articles_per_cat', '2'),
+  ('schedule_last_run',         ''),
+  ('schedule_next_run',         ''),
+  ('schedule_status',           'idle')     -- 'idle' | 'running' | 'error'
+ON CONFLICT (key) DO NOTHING;
+
+-- Verify
+SELECT key, value FROM public.settings
+WHERE key LIKE 'schedule_%'
+ORDER BY key;

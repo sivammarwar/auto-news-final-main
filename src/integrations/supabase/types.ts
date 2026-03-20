@@ -46,6 +46,13 @@ export type Database = {
           width: number
           height: number | null
           size_kb: number | null
+          // Attribution columns (added in history migration)
+          photographer: string | null
+          photographer_url: string | null
+          image_source: string | null
+          wiki_attribution: string | null
+          wiki_license: string | null
+          wiki_license_url: string | null
           created_at: string
           updated_at: string
         }
@@ -58,6 +65,12 @@ export type Database = {
           width?: number
           height?: number | null
           size_kb?: number | null
+          photographer?: string | null
+          photographer_url?: string | null
+          image_source?: string | null
+          wiki_attribution?: string | null
+          wiki_license?: string | null
+          wiki_license_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -70,6 +83,12 @@ export type Database = {
           width?: number
           height?: number | null
           size_kb?: number | null
+          photographer?: string | null
+          photographer_url?: string | null
+          image_source?: string | null
+          wiki_attribution?: string | null
+          wiki_license?: string | null
+          wiki_license_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -87,6 +106,12 @@ export type Database = {
         Row: {
           admin_notes: string | null
           category: string
+          // History subcategory slug, e.g. 'ancient-civilizations'
+          subcategory: string | null
+          // Era label, e.g. 'ancient' | 'medieval' | 'modern' | 'all'
+          era: string | null
+          // 'known' | 'hidden' | 'both'
+          difficulty: string | null
           created_at: string
           id: number
           image_url: string | null
@@ -105,6 +130,9 @@ export type Database = {
         Insert: {
           admin_notes?: string | null
           category: string
+          subcategory?: string | null
+          era?: string | null
+          difficulty?: string | null
           created_at?: string
           id?: number
           image_url?: string | null
@@ -123,6 +151,9 @@ export type Database = {
         Update: {
           admin_notes?: string | null
           category?: string
+          subcategory?: string | null
+          era?: string | null
+          difficulty?: string | null
           created_at?: string
           id?: number
           image_url?: string | null

@@ -8,8 +8,8 @@ interface EmptyStateProps {
 }
 
 const EmptyState = ({
-  title   = 'No articles yet',
-  message = 'Fresh stories are on their way. Check back soon.',
+  title   = 'No history articles yet',
+  message = 'Fresh history is being written. Check back soon.',
 }: EmptyStateProps) => {
   return (
     <motion.div
@@ -17,9 +17,13 @@ const EmptyState = ({
       animate={{ opacity: 1 }}
       className="py-24 sm:py-32 px-6 text-center"
     >
-      <div className="text-5xl mb-6">📭</div>
-      <h2 className="text-xl sm:text-2xl font-bold tracking-tightest text-foreground mb-3">{title}</h2>
-      <p className="text-muted-foreground max-w-sm mx-auto leading-relaxed text-sm sm:text-base">{message}</p>
+      <div className="text-5xl mb-6">📜</div>
+      <h2 className="text-xl sm:text-2xl font-bold tracking-tightest text-foreground mb-3">
+        {title}
+      </h2>
+      <p className="text-muted-foreground max-w-sm mx-auto leading-relaxed text-sm sm:text-base">
+        {message}
+      </p>
     </motion.div>
   );
 };

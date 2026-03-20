@@ -14,7 +14,12 @@ interface NavLinkProps {
 
 export function NavLink({ href, className, activeClassName, children, ...props }: NavLinkProps) {
   const pathname = usePathname();
-  const isActive = pathname === href;
+
+  // Also mark as active for subcategory pages when on /category/history
+  // e.g. /category/ancient-civilizations should highlight the History nav link
+  const isActive =
+    pathname === href ||
+    (href === '/category/history' && pathname.startsWith('/category/'));
 
   return (
     <Link href={href} className={cn(className, isActive && activeClassName)} {...props}>

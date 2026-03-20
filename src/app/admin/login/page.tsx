@@ -2,13 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import SiteHeader from '@/components/SiteHeader';
-import SiteFooter from '@/components/SiteFooter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-
-const ADMIN_PASSWORD = '@3088shivA+her';
 
 export default function AdminLogin() {
   const [password, setPassword] = useState('');
@@ -20,13 +16,25 @@ export default function AdminLogin() {
     e.preventDefault();
     setError('');
     setLoading(true);
+
     try {
-      if (password === ADMIN_PASSWORD) {
-        const token = { value: 'admin-token-' + Date.now(), expires: Date.now() + 24 * 60 * 60 * 1000 };
+      // Password is verified server-side — never sent to client bundle
+      const res = await fetch('/api/admin/auth', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ password }),
+      });
+
+      if (res.ok) {
+        // Store a lightweight expiring token in localStorage
+        const token = {
+          value:   'admin-' + Date.now(),
+          expires: Date.now() + 24 * 60 * 60 * 1000,  // 24 hours
+        };
         localStorage.setItem('admin_token', JSON.stringify(token));
         router.push('/admin');
       } else {
-        setError('❌ Incorrect password. Try again.');
+        setError('Incorrect password. Try again.');
         setPassword('');
       }
     } catch {
@@ -37,35 +45,50 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <SiteHeader />
-      <main className="flex-1 flex items-center justify-center px-4 py-20">
-        <Card className="w-full max-w-md p-8">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2">Admin Panel</h1>
-            <p className="text-gray-600">Enter your password to continue</p>
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
+      <div className="mb-8 text-center">
+        <h1 className="font-bold text-2xl tracking-tightest text-foreground">
+          SIGNAL <span className="font-mono text-[13px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">History</span>
+        </h1>
+        <p className="text-muted-foreground text-sm mt-1">Admin panel</p>
+      </div>
+
+      <Card className="w-full max-w-sm p-8">
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2 text-foreground">
+              Password
+            </label>
+            <Input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Enter admin password"
+              className="w-full"
+              autoFocus
+              autoComplete="current-password"
+            />
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Password</label>
-              <Input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Enter admin password"
-                className="w-full"
-                autoFocus
-              />
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+              {error}
             </div>
-            {error && <div className="p-3 bg-red-100 text-red-700 text-sm rounded">{error}</div>}
-            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={loading || !password}>
-              {loading ? 'Logging in...' : 'Login'}
-            </Button>
-          </form>
-          <p className="text-xs text-gray-500 text-center mt-6">Session expires after 24 hours</p>
-        </Card>
-      </main>
-      <SiteFooter />
+          )}
+
+          <Button
+            type="submit"
+            className="w-full bg-amber-700 hover:bg-amber-800 text-white font-semibold"
+            disabled={loading || !password}
+          >
+            {loading ? 'Verifying...' : 'Login'}
+          </Button>
+        </form>
+
+        <p className="text-xs text-muted-foreground text-center mt-6">
+          Session expires after 24 hours
+        </p>
+      </Card>
     </div>
   );
 }
