@@ -609,7 +609,7 @@ async function fetchAndSaveImages(
           width:            p.width,
           height:           p.height,
           source:           'pexels' as const,
-          downloadLocation: null,
+          downloadLocation: undefined,
         });
       }
 
