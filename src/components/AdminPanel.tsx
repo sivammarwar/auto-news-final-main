@@ -4,15 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { Upload, Trash2, Zap, RefreshCw, CheckSquare, Square, X } from 'lucide-react';
-import {
-  loadAllRegisteredKeys,
-  loadCoveredTitles,
-  reserveTopic,
-  confirmTopic,
-  releaseTopic,
-  filterAvailableTopics,
-} from '@/lib/topicRegistry';
+import { Upload, Trash2, Zap, RefreshCw, CheckSquare, Square, X, Plus, BookOpen } from 'lucide-react';
 import SchedulerPanel from '@/components/SchedulerPanel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -53,6 +45,11 @@ interface GenLog {
   type: 'info' | 'success' | 'error' | 'warn' | 'progress';
   ts: string;
 }
+interface TopicPoolCount {
+  subcategory: string;
+  unused: number;
+  total: number;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // AUTHOR PERSONA
@@ -75,419 +72,73 @@ const AUTHOR = {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-// 15 HISTORY CATEGORIES — each with topic pools (known + hidden sides)
+// 15 HISTORY CATEGORIES
 // ════════════════════════════════════════════════════════════════════════════
 const HISTORY_CATEGORIES: Record<string, {
   label: string;
   emoji: string;
   era: string;
-  topicPool: string[];
   imageQueries: string[];
 }> = {
   'ancient-civilizations': {
-    label: 'Ancient Civilizations',
-    emoji: '🏛️',
-    era: 'ancient',
-    topicPool: [
-      'the engineering genius behind the Egyptian pyramids that modern architects still cannot replicate',
-      'the real reason Rome fell — not barbarians, but something far more internal and surprising',
-      'the Mesopotamian city of Uruk — the world\'s first true metropolis 5000 years before New York',
-      'the ancient Greek invention of democracy that was actually far more brutal than textbooks admit',
-      'the hidden female pharaohs of Egypt that male successors tried to erase from history',
-      'the Indus Valley Civilization\'s sewage system that outclassed Rome by 2000 years',
-      'the Persian Empire\'s surprisingly tolerant policies that history books credit to others',
-      'the real story of Cleopatra — polyglot strategist, not just a romantic figure',
-      'the Minoan civilization of Crete whose sudden collapse baffles archaeologists to this day',
-      'ancient China\'s Han Dynasty bureaucracy — the world\'s first civil service exam system',
-    ],
-    imageQueries: [
-      'ancient ruins archaeology excavation',
-      'Egyptian pyramids Giza desert',
-      'ancient Greece Parthenon Athens',
-      'Mesopotamia ancient ruins Iraq',
-      'ancient Rome Colosseum ruins',
-      'Indus Valley Mohenjo-daro ruins',
-      'ancient civilization stone carving',
-      'archaeological dig ancient artifacts',
-    ],
+    label: 'Ancient Civilizations', emoji: '🏛️', era: 'ancient',
+    imageQueries: ['ancient ruins archaeology excavation','Egyptian pyramids Giza desert','ancient Greece Parthenon Athens','Mesopotamia ancient ruins Iraq','ancient Rome Colosseum ruins','Indus Valley Mohenjo-daro ruins','ancient civilization stone carving','archaeological dig ancient artifacts'],
   },
   'medieval-feudal': {
-    label: 'Medieval & Feudal',
-    emoji: '⚔️',
-    era: 'medieval',
-    topicPool: [
-      'the Black Death\'s hidden silver lining — how the plague accidentally ended feudalism',
-      'medieval knights: the brutal reality behind the romantic legend of chivalry',
-      'the real Crusades — what actually happened when East met West in the Holy Land',
-      'the Mongol Empire\'s postal system that was faster than anything Europe had for 500 more years',
-      'the female rulers of medieval Europe who held power while history forgot their names',
-      'the Islamic Golden Age — how Baghdad became the world\'s center of science when Europe was in darkness',
-      'the hidden history of the medieval peasant revolts that almost toppled European kings',
-      'the real Vlad the Impaler — brutal tyrant or misunderstood national hero?',
-      'the Silk Road\'s medieval golden era — more than just trade, it was the internet of its day',
-      'the Byzantine Empire\'s 1000-year survival strategy that historians rarely teach',
-    ],
-    imageQueries: [
-      'medieval castle ruins stone fortress',
-      'knights armor medieval sword',
-      'medieval cathedral gothic architecture',
-      'crusades middle ages historical',
-      'medieval town village reconstruction',
-      'Byzantine mosaic Constantinople',
-      'Mongol warrior historical artwork',
-      'medieval manuscript illuminated',
-    ],
+    label: 'Medieval & Feudal', emoji: '⚔️', era: 'medieval',
+    imageQueries: ['medieval castle ruins stone fortress','knights armor medieval sword','medieval cathedral gothic architecture','crusades middle ages historical','medieval town village reconstruction','Byzantine mosaic Constantinople','Mongol warrior historical artwork','medieval manuscript illuminated'],
   },
   'age-of-exploration': {
-    label: 'Age of Exploration',
-    emoji: '🧭',
-    era: 'early-modern',
-    topicPool: [
-      'the Chinese explorer Zheng He who reached Africa 70 years before Columbus reached America',
-      'what Columbus actually found — and what he thought he found — in 1492',
-      'the Polynesian navigators who crossed the Pacific using stars and wave patterns 1000 years before Europeans',
-      'the brutal reality of the Portuguese spice trade routes that no travel brochure mentions',
-      'Ibn Battuta — the medieval Moroccan traveler who covered more ground than Marco Polo',
-      'the maps that preceded European exploration — and the cartographers the West prefers to forget',
-      'the real story of Magellan\'s circumnavigation — including who actually finished it (not him)',
-      'the Aztec and Inca empires\' own extensive trade networks before European contact',
-      'how the Dutch East India Company became the world\'s first multinational corporation',
-      'the hidden role of African navigators and coastal traders in shaping exploration routes',
-    ],
-    imageQueries: [
-      'old sailing ship ocean historical',
-      'antique map parchment exploration',
-      'compass navigation maritime historical',
-      'Portuguese caravel historic ship',
-      'ancient trade route spice market',
-      'explorer navigation stars ocean',
-      'colonial era harbor port ships',
-      'old world map cartography atlas',
-    ],
+    label: 'Age of Exploration', emoji: '🧭', era: 'early-modern',
+    imageQueries: ['old sailing ship ocean historical','antique map parchment exploration','compass navigation maritime historical','Portuguese caravel historic ship','ancient trade route spice market','explorer navigation stars ocean','colonial era harbor port ships','old world map cartography atlas'],
   },
   'revolutions-politics': {
-    label: 'Revolutions & Politics',
-    emoji: '✊',
-    era: 'modern',
-    topicPool: [
-      'what the French Revolution actually achieved — and what it destroyed — beyond the guillotine stories',
-      'the American Revolution\'s dirty secret: many Founding Fathers owned slaves while writing about freedom',
-      'the Russian Revolution\'s first weeks — when it looked like genuine liberation before it turned',
-      'the Haitian Revolution — the only successful slave revolt in history that textbooks almost never teach',
-      'how the 1848 revolutions across Europe all failed — and why that failure shaped the modern world',
-      'the Mexican Revolution\'s Zapata and Villa — what they actually stood for versus the myth',
-      'the Iranian Constitutional Revolution of 1906 — the forgotten democratic movement the West ignored',
-      'how the Chinese Revolution of 1911 ended 2000 years of imperial rule almost overnight',
-      'the Velvet Revolutions of 1989 — how the Soviet bloc collapsed in 6 months without a single major battle',
-      'the real reasons behind the Arab Spring — and why Western media fundamentally misread it',
-    ],
-    imageQueries: [
-      'revolution protest historical crowd',
-      'French Revolution historical painting',
-      'Bastille storming historical artwork',
-      'political uprising streets historical',
-      'independence movement historical photo',
-      'revolution barricades streets historical',
-      'political leaders historical meeting',
-      'declaration independence historical document',
-    ],
+    label: 'Revolutions & Politics', emoji: '✊', era: 'modern',
+    imageQueries: ['revolution protest historical crowd','French Revolution historical painting','Bastille storming historical artwork','political uprising streets historical','independence movement historical photo','revolution barricades streets historical','political leaders historical meeting','declaration independence historical document'],
   },
   'world-wars-conflicts': {
-    label: 'World Wars & Conflicts',
-    emoji: '🎖️',
-    era: 'modern',
-    topicPool: [
-      'the real trigger of WWI — not the assassination, but the 40-year alliance system that made it inevitable',
-      'the Christmas Truce of 1914 — when soldiers on both sides stopped fighting for a day',
-      'the Holocaust\'s lesser-known victims — the Roma, disabled, and Soviet POWs alongside Jewish communities',
-      'the Pacific War\'s island hopping strategy — and the ordinary soldiers who bore the cost',
-      'the Cold War proxy conflicts that killed millions while superpowers avoided direct confrontation',
-      'the Korean War — still technically ongoing — the conflict the world agreed to forget',
-      'the role of African and Asian soldiers in WWI and WWII that European history books minimize',
-      'the Nanking Massacre — China\'s most traumatic WWII memory and Japan\'s continuing silence',
-      'the Berlin Airlift — the Cold War standoff that was resolved without firing a single shot',
-      'how WWII\'s ending in 1945 immediately planted the seeds of 50 years of Cold War',
-    ],
-    imageQueries: [
-      'World War memorial cemetery soldiers',
-      'World War trench warfare historical',
-      'WWII military soldiers historical photo',
-      'war memorial monument remembrance',
-      'battlefield ruins war historical',
-      'military aircraft WWII historical',
-      'cold war Berlin wall historical',
-      'war veterans soldiers historical portrait',
-    ],
+    label: 'World Wars & Conflicts', emoji: '🎖️', era: 'modern',
+    imageQueries: ['World War memorial cemetery soldiers','World War trench warfare historical','WWII military soldiers historical photo','war memorial monument remembrance','battlefield ruins war historical','military aircraft WWII historical','cold war Berlin wall historical','war veterans soldiers historical portrait'],
   },
   'colonial-imperial': {
-    label: 'Colonial & Imperial',
-    emoji: '🌐',
-    era: 'modern',
-    topicPool: [
-      'the British Empire at its peak — 24% of the world\'s land surface controlled by an island nation',
-      'the Belgian Congo genocide — King Leopold II\'s rubber terror that killed 10 million Africans',
-      'India under the East India Company before it became the British Raj',
-      'the Berlin Conference of 1884 — how European powers divided Africa in a room without a single African present',
-      'the real cost of the transatlantic slave trade — numbers, routes, and the African kingdoms that participated',
-      'how the Mughal Empire handled religious diversity compared to contemporary European intolerance',
-      'the Ottoman Empire\'s millet system — a functioning pluralist society 400 years before modern multiculturalism',
-      'the American colonial era in the Philippines — the forgotten 50-year occupation most Americans don\'t know',
-      'how colonialism deliberately destroyed existing economies to create dependency',
-      'the independence movements of the 1940s-60s — why 40+ nations got independence in just 20 years',
-    ],
-    imageQueries: [
-      'colonial era architecture building',
-      'empire historical map world',
-      'colonial port harbor historical ships',
-      'independence movement crowd historical',
-      'imperial palace historical architecture',
-      'colonial era document treaty historical',
-      'African independence historical photo',
-      'empire ruins archaeological site',
-    ],
+    label: 'Colonial & Imperial', emoji: '🌐', era: 'modern',
+    imageQueries: ['colonial era architecture building','empire historical map world','colonial port harbor historical ships','independence movement crowd historical','imperial palace historical architecture','colonial era document treaty historical','African independence historical photo','empire ruins archaeological site'],
   },
   'human-rights-movements': {
-    label: 'Human Rights Movements',
-    emoji: '🕊️',
-    era: 'modern',
-    topicPool: [
-      'the Abolitionist movement\'s hidden heroes — the freed slaves who drove the campaign, not just the white advocates',
-      'the Suffragette movement\'s violent tactics that history sanitizes into peaceful marches',
-      'Gandhi\'s Salt March — why a walk to the sea changed the political calculus of the British Empire',
-      'the Montgomery Bus Boycott\'s 381 days — the economic strategy behind the moral cause',
-      'the hidden history of disability rights — the longest civil rights struggle with the least coverage',
-      'LGBTQ+ rights before the 20th century — the surprising tolerance (and persecution) across different cultures',
-      'the labor movement\'s forgotten martyrs — the Triangle Shirtwaist fire and the rights it created',
-      'apartheid\'s financial lifeline — the Western corporations that kept it running while condemning it publicly',
-      'the UN Declaration of Human Rights 1948 — what was left out, and who fought to leave it out',
-      'child labor: from common practice to criminal act — how the shift happened and how long it took',
-    ],
-    imageQueries: [
-      'civil rights march protest historical',
-      'suffragette women protest historical',
-      'human rights demonstration historical',
-      'Gandhi Salt March historical photo',
-      'civil rights movement historical crowd',
-      'abolition slavery historical monument',
-      'labor movement workers historical strike',
-      'peace protest march historical street',
-    ],
+    label: 'Human Rights Movements', emoji: '🕊️', era: 'modern',
+    imageQueries: ['civil rights march protest historical','suffragette women protest historical','human rights demonstration historical','Gandhi Salt March historical photo','civil rights movement historical crowd','abolition slavery historical monument','labor movement workers historical strike','peace protest march historical street'],
   },
   'science-technology': {
-    label: 'Science & Technology',
-    emoji: '🔬',
-    era: 'all',
-    topicPool: [
-      'the Baghdad Battery — a 2000-year-old object that may have been an actual electric cell',
-      'Nikola Tesla\'s suppressed inventions and the corporate war that erased him from textbooks for decades',
-      'the forgotten women of computing — Ada Lovelace, Grace Hopper, and the Hidden Figures of NASA',
-      'ancient Greek Antikythera mechanism — a 2000-year-old analog computer that predates modern calculation by 1500 years',
-      'the Arab scholars who preserved Greek science and added algebra, algorithms, and astronomy',
-      'the industrial revolution\'s child labor — the human cost behind Britain\'s economic miracle',
-      'the Manhattan Project\'s scientists who built the bomb and then spent decades trying to stop its spread',
-      'Galileo vs the Church — the real story is more complex than science vs religion',
-      'the Green Revolution\'s double edge — how it saved billions from starvation while creating new problems',
-      'Charles Darwin\'s hidden years — the 20 years between his voyage and publication of On the Origin of Species',
-    ],
-    imageQueries: [
-      'science laboratory historical vintage',
-      'telescope observatory astronomy historical',
-      'industrial revolution machinery historical',
-      'ancient scientific instrument astrolabe',
-      'early aviation Wright brothers historical',
-      'scientific discovery laboratory equipment',
-      'space exploration rocket launch NASA',
-      'ancient clockwork mechanism gears',
-    ],
+    label: 'Science & Technology', emoji: '🔬', era: 'all',
+    imageQueries: ['science laboratory historical vintage','telescope observatory astronomy historical','industrial revolution machinery historical','ancient scientific instrument astrolabe','early aviation Wright brothers historical','scientific discovery laboratory equipment','space exploration rocket launch NASA','ancient clockwork mechanism gears'],
   },
   'religion-philosophy': {
-    label: 'Religion & Philosophy',
-    emoji: '📿',
-    era: 'all',
-    topicPool: [
-      'the Council of Nicaea 325 AD — how a political meeting decided what Christianity would officially believe',
-      'Zoroastrianism\'s enormous influence on Judaism, Christianity, and Islam that few people acknowledge',
-      'the Buddhist monasteries of ancient India that functioned as universities 1500 years before Oxford',
-      'Socrates\'s trial and execution — the real political reasons behind the philosophical charges',
-      'the Sufi tradition\'s profound influence on music, poetry, and tolerance across the Islamic world',
-      'why the Spanish Inquisition was both worse and better than popular culture portrays it',
-      'Confucianism as state ideology — how one philosopher\'s ethics ran China for 2000 years',
-      'the Aztec religion\'s complex cosmology that had more in common with physics than superstition',
-      'the Protestant Reformation\'s unintended consequences — capitalism, individualism, and the nation-state',
-      'the historical Jesus vs the theological Christ — what historians actually know',
-    ],
-    imageQueries: [
-      'ancient temple religious architecture',
-      'philosopher ancient manuscript scroll',
-      'cathedral interior gothic architecture',
-      'religious ceremony ancient historical',
-      'monastery ancient stone building',
-      'sacred text ancient manuscript',
-      'temple ruins archaeological site',
-      'philosophy ancient Greek sculpture',
-    ],
+    label: 'Religion & Philosophy', emoji: '📿', era: 'all',
+    imageQueries: ['ancient temple religious architecture','philosopher ancient manuscript scroll','cathedral interior gothic architecture','religious ceremony ancient historical','monastery ancient stone building','sacred text ancient manuscript','temple ruins archaeological site','philosophy ancient Greek sculpture'],
   },
   'cultural-social': {
-    label: 'Cultural & Social',
-    emoji: '🎭',
-    era: 'all',
-    topicPool: [
-      'the history of fashion as political statement — from sumptuary laws to the suit jacket\'s military origins',
-      'how the printing press didn\'t just spread literacy — it spread propaganda, heresy, and revolution',
-      'the history of coffee houses — the original social media platform that powered the Enlightenment',
-      'medieval food culture: what people actually ate (it wasn\'t all brown and grim)',
-      'the history of public baths from Rome to the Ottoman hammam to Japanese onsen',
-      'how the Renaissance was financed — the Medici bank and the economic engine behind the art',
-      'the history of music notation — how humans went from oral tradition to written symphonies',
-      'the real story of the samurai — their actual role in Japanese society vs the Hollywood version',
-      'ancient Olympic Games vs modern — what was the same, what was dramatically different',
-      'the history of language death — how thousands of languages disappeared and what was lost with them',
-    ],
-    imageQueries: [
-      'cultural festival historical celebration',
-      'ancient art museum artifact',
-      'historical textile fashion costume',
-      'ancient theater amphitheater ruins',
-      'traditional music instrument historical',
-      'cultural heritage craft artisan',
-      'ancient market bazaar historical',
-      'historical painting renaissance art museum',
-    ],
+    label: 'Cultural & Social', emoji: '🎭', era: 'all',
+    imageQueries: ['cultural festival historical celebration','ancient art museum artifact','historical textile fashion costume','ancient theater amphitheater ruins','traditional music instrument historical','cultural heritage craft artisan','ancient market bazaar historical','historical painting renaissance art museum'],
   },
   'economic-trade': {
-    label: 'Economic & Trade',
-    emoji: '🏺',
-    era: 'all',
-    topicPool: [
-      'the Silk Road\'s true scale — not just silk, but ideas, diseases, religions, and technologies',
-      'how the Dutch Tulip Mania of 1637 became the world\'s first documented speculative bubble',
-      'the history of banking — from Mesopotamian grain loans to the Medici\'s double-entry bookkeeping',
-      'the Black Death\'s economic aftermath — how the plague actually raised wages for surviving workers',
-      'the East India Company: the corporation that ruled a subcontinent with its own army and courts',
-      'ancient Rome\'s remarkably modern economy — trade networks, inflation, and monetary crises',
-      'how the trans-Saharan gold trade made Mali the wealthiest kingdom in the medieval world',
-      'the history of debt — from ancient Sumer\'s clay tablets to modern sovereign debt crises',
-      'the Hanseatic League — the medieval merchant alliance that dominated Northern European trade for 400 years',
-      'how the opium trade funded the British Empire and deliberately addicted millions of Chinese',
-    ],
-    imageQueries: [
-      'Silk Road ancient trade caravan',
-      'ancient market trade spices bazaar',
-      'historical coins currency ancient',
-      'merchant ship trade historical port',
-      'ancient ledger accounting book historical',
-      'trade route map historical parchment',
-      'economic center historical city ruins',
-      'ancient gold treasure historical artifact',
-    ],
+    label: 'Economic & Trade', emoji: '🏺', era: 'all',
+    imageQueries: ['Silk Road ancient trade caravan','ancient market trade spices bazaar','historical coins currency ancient','merchant ship trade historical port','ancient ledger accounting book historical','trade route map historical parchment','economic center historical city ruins','ancient gold treasure historical artifact'],
   },
   'military-warfare': {
-    label: 'Military & Warfare',
-    emoji: '🗡️',
-    era: 'all',
-    topicPool: [
-      'the Battle of Thermopylae: 300 Spartans vs Persia — what actually happened vs the myth',
-      'Sun Tzu\'s Art of War: the strategies that still work 2500 years later, and the ones that don\'t',
-      'the Mongol siege warfare techniques that made them almost unbeatable across three continents',
-      'Napoleon\'s military genius vs Napoleon\'s catastrophic overconfidence — the same man, two stories',
-      'the Zulu Army\'s tactics that defeated a professional British force at the Battle of Isandlwana',
-      'medieval siege warfare — the engineering, psychology, and 3-year standoffs that shaped kingdoms',
-      'espionage in WWII — the double agents, codebreakers, and deceptions that actually won the war',
-      'the Peloponnesian War — Athens vs Sparta: the world\'s first great power conflict and its aftermath',
-      'guerrilla warfare from ancient Parthia to Vietnam — why superpowers keep losing to insurgents',
-      'the arms race in ancient times — from bronze swords to iron to the crossbow to the trebuchet',
-    ],
-    imageQueries: [
-      'ancient battlefield historical warfare',
-      'military armor weapons historical museum',
-      'siege castle medieval warfare',
-      'ancient warrior sword shield historical',
-      'military strategy map historical war room',
-      'battlefield monument memorial historical',
-      'ancient fortification wall ruins',
-      'historical military commander portrait',
-    ],
+    label: 'Military & Warfare', emoji: '🗡️', era: 'all',
+    imageQueries: ['ancient battlefield historical warfare','military armor weapons historical museum','siege castle medieval warfare','ancient warrior sword shield historical','military strategy map historical war room','battlefield monument memorial historical','ancient fortification wall ruins','historical military commander portrait'],
   },
   'regional-history': {
-    label: 'Regional History',
-    emoji: '🗺️',
-    era: 'all',
-    topicPool: [
-      'the Kingdom of Aksum — the African empire that converted to Christianity before Rome and minted its own gold coins',
-      'pre-colonial Latin America\'s sophisticated agricultural terracing systems that still work today',
-      'the history of Southeast Asia\'s Khmer Empire — Angkor Wat\'s builders and what happened to them',
-      'medieval West Africa\'s Mali and Songhai empires — their universities, legal systems, and gold reserves',
-      'Japan\'s Edo period isolation policy — how 250 years of sakoku shaped modern Japanese identity',
-      'the Byzantine Empire\'s eastern survival after Rome\'s fall — 1000 more years of Roman civilization',
-      'the Mughal Empire at its peak under Akbar — religious tolerance, arts, and architecture',
-      'Central Asia\'s forgotten role as the world\'s crossroads — the empires that rose and fell in the steppe',
-      'Australia\'s 60,000-year Aboriginal history — the world\'s oldest continuous civilization',
-      'the Aztec capital Tenochtitlan — the city that was larger than London when Cortés arrived',
-    ],
-    imageQueries: [
-      'ancient Africa kingdom ruins historical',
-      'Angkor Wat Cambodia temple ruins',
-      'Mughal architecture India historical',
-      'ancient Americas ruins civilization',
-      'African historical architecture monument',
-      'regional heritage temple ancient',
-      'ancient city ruins excavation',
-      'cultural heritage world site landmark',
-    ],
+    label: 'Regional History', emoji: '🗺️', era: 'all',
+    imageQueries: ['ancient Africa kingdom ruins historical','Angkor Wat Cambodia temple ruins','Mughal architecture India historical','ancient Americas ruins civilization','African historical architecture monument','regional heritage temple ancient','ancient city ruins excavation','cultural heritage world site landmark'],
   },
   'archaeology-mysteries': {
-    label: 'Archaeology & Mysteries',
-    emoji: '🔍',
-    era: 'all',
-    topicPool: [
-      'Göbekli Tepe — the 12,000-year-old temple complex that rewrites the history of civilization',
-      'the Nazca Lines of Peru — what we know, what we don\'t, and why aliens are not the answer',
-      'the mystery of the Bronze Age Collapse — how a dozen civilizations fell simultaneously around 1200 BC',
-      'Pompeii\'s preserved city — what daily Roman life actually looked like frozen in ash',
-      'the Voynich Manuscript — an undeciphered book from the 15th century that has beaten every cryptanalyst',
-      'Easter Island\'s moai — the real (and surprising) story behind the statues and the population collapse',
-      'the Lost City of Z — Colonel Fawcett\'s obsession and what archaeologists actually found in the Amazon',
-      'Çatalhöyük — the 9000-year-old egalitarian city with no streets, no rulers, and no hierarchy',
-      'the Antikythera shipwreck — the archaeological dive that revealed a 2000-year-old analog computer',
-      'Stonehenge\'s real purpose — what 50 years of new archaeology has actually told us',
-    ],
-    imageQueries: [
-      'archaeological excavation dig site ruins',
-      'ancient mystery ruins stone circle',
-      'archaeological artifact museum display',
-      'ancient ruins archaeological site',
-      'Stonehenge mystery stone ancient',
-      'Pompeii ruins archaeological site',
-      'ancient cave painting archaeology',
-      'lost city ruins jungle discovery',
-    ],
+    label: 'Archaeology & Mysteries', emoji: '🔍', era: 'all',
+    imageQueries: ['archaeological excavation dig site ruins','ancient mystery ruins stone circle','archaeological artifact museum display','ancient ruins archaeological site','Stonehenge mystery stone ancient','Pompeii ruins archaeological site','ancient cave painting archaeology','lost city ruins jungle discovery'],
   },
   'famous-figures': {
-    label: 'Famous Figures & Leaders',
-    emoji: '👑',
-    era: 'all',
-    topicPool: [
-      'Alexander the Great\'s 10-year campaign — the logistics, the battles, and the man behind the myth',
-      'Queen Elizabeth I\'s political genius — how a woman survived in a world built to exclude her',
-      'Genghis Khan: mass murderer or the man who created the first free-trade zone across Asia?',
-      'Marie Curie\'s double Nobel Prize — and the scientific establishment\'s relentless attempt to sideline her',
-      'Abraham Lincoln\'s complex, evolving views on race that neither side of modern politics wants to quote accurately',
-      'Suleiman the Magnificent — the Ottoman Sultan who nearly conquered Vienna and built a legal code',
-      'Harriet Tubman: not just the Underground Railroad — her role as a Union spy during the Civil War',
-      'Mao Zedong\'s economic catastrophes — the Great Leap Forward\'s death toll that China still does not officially acknowledge',
-      'Julius Caesar: the politician who used military glory to seize power, then paid for it',
-      'Nikola Tesla vs Thomas Edison — the current war and what it actually tells us about how innovation works',
-    ],
-    imageQueries: [
-      'historical portrait leader ancient',
-      'historical figure sculpture monument',
-      'famous leader historical portrait museum',
-      'ancient ruler emperor historical artwork',
-      'historical biography portrait painting',
-      'leader monument memorial historical',
-      'ancient king queen historical sculpture',
-      'famous historical figure bust museum',
-    ],
+    label: 'Famous Figures & Leaders', emoji: '👑', era: 'all',
+    imageQueries: ['historical portrait leader ancient','historical figure sculpture monument','famous leader historical portrait museum','ancient ruler emperor historical artwork','historical biography portrait painting','leader monument memorial historical','ancient king queen historical sculpture','famous historical figure bust museum'],
   },
 };
 
@@ -499,18 +150,19 @@ const BATCH_PAUSE_MS         = 5 * 60 * 1000;
 const INTER_ARTICLE_PAUSE_MS = 8_000;
 const GROQ_TIMEOUT_MS        = 40_000;
 const MAX_RETRIES            = 5;
-const ARTICLES_PER_CATEGORY  = 2;   // 2 per category × 15 = 30 articles per run
+const ARTICLES_PER_CATEGORY  = 2;
 const AUTO_PUBLISH_SCORE     = 7.5;
 const TARGET_IMAGES          = 6;
 const MIN_IMAGES_TO_PUBLISH  = 2;
 const IMAGE_MIN_WIDTH        = 800;
+const LOW_TOPIC_WARNING      = 10; // warn when unused topics < this number
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const nowTS  = () => new Date().toLocaleTimeString('en-IN', { hour12: false });
 const sleep  = (ms: number) => new Promise(r => setTimeout(r, ms));
 const clamp  = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
-// ─── Groq API with key rotation ───────────────────────────────────────────────
+// ─── Groq API ─────────────────────────────────────────────────────────────────
 async function groqRequest(
   key: string,
   messages: { role: string; content: string }[],
@@ -585,7 +237,6 @@ async function groqRequest(
   return null;
 }
 
-// ─── Robust JSON extractor ────────────────────────────────────────────────────
 function extractJSON<T>(raw: string | null): T | null {
   if (!raw) return null;
   let cleaned = raw.trim();
@@ -608,7 +259,6 @@ function extractJSON<T>(raw: string | null): T | null {
   const attempts = [cleaned, fixControlChars(cleaned)];
   const objM = cleaned.match(/\{[\s\S]*\}/);
   if (objM) attempts.push(objM[0], fixControlChars(objM[0]));
-
   for (const attempt of attempts) {
     try { return JSON.parse(attempt) as T; } catch { /* try next */ }
   }
@@ -616,7 +266,7 @@ function extractJSON<T>(raw: string | null): T | null {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// IMAGE HANDLING
+// IMAGE HANDLING (unchanged from original)
 // ════════════════════════════════════════════════════════════════════════════
 const _usedPexelsIds = new Set<string>();
 const _usedWikiIds   = new Set<string>();
@@ -627,21 +277,12 @@ function getNextPexelsPage(query: string): number {
   _pexelsPageMap.set(query, current >= 15 ? 1 : current + 1);
   return current;
 }
-
-function clearImageCache() {
-  _usedPexelsIds.clear();
-  _usedWikiIds.clear();
-  _pexelsPageMap.clear();
-}
-
+function clearImageCache() { _usedPexelsIds.clear(); _usedWikiIds.clear(); _pexelsPageMap.clear(); }
 function isFreeWikimediaLicense(license: string): boolean {
   if (!license) return false;
-  const free = ['cc0', 'cc-by', 'cc by', 'public domain', 'pd', 'cc-sa', 'cc by-sa', 'attribution'];
-  return free.some(f => license.toLowerCase().includes(f));
+  return ['cc0','cc-by','cc by','public domain','pd','cc-sa','cc by-sa','attribution'].some(f => license.toLowerCase().includes(f));
 }
-function stripHtml(html: string): string {
-  return (html ?? '').replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim();
-}
+function stripHtml(html: string): string { return (html ?? '').replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim(); }
 
 interface HybridPhoto {
   id: string; url: string; alt: string; width: number; height: number;
@@ -652,15 +293,12 @@ interface HybridPhoto {
 
 async function fetchPexels(key: string, query: string, count = 2): Promise<HybridPhoto[]> {
   const results: HybridPhoto[] = [];
-  const page    = getNextPexelsPage(query);
+  const page = getNextPexelsPage(query);
   const perPage = Math.min(count * 5, 25);
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=landscape`,
-      { signal: ctrl.signal, headers: { Authorization: key } }
-    );
+    const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=landscape`, { signal: ctrl.signal, headers: { Authorization: key } });
     clearTimeout(t);
     if (!res.ok) return [];
     const data = await res.json();
@@ -669,11 +307,7 @@ async function fetchPexels(key: string, query: string, count = 2): Promise<Hybri
       if (p.width < IMAGE_MIN_WIDTH) continue;
       const pid = `pexels_${p.id}`;
       if (_usedPexelsIds.has(pid)) continue;
-      results.push({
-        id: pid, url: p.src.large2x || p.src.large, alt: p.alt || query,
-        width: p.width, height: p.height, source: 'pexels',
-        photographer: p.photographer ?? null, photographerUrl: p.photographer_url ?? null,
-      });
+      results.push({ id: pid, url: p.src.large2x || p.src.large, alt: p.alt || query, width: p.width, height: p.height, source: 'pexels', photographer: p.photographer ?? null, photographerUrl: p.photographer_url ?? null });
     }
   } catch { /* skip */ }
   return results;
@@ -697,19 +331,13 @@ async function fetchWikimedia(searchTerm: string, count = 2): Promise<HybridPhot
       for (const page of Object.values(id?.query?.pages ?? {}) as any[]) {
         const info = page.imageinfo?.[0];
         if (!info) continue;
-        if (!['image/jpeg', 'image/png', 'image/webp'].includes(info.mime)) continue;
+        if (!['image/jpeg','image/png','image/webp'].includes(info.mime)) continue;
         if ((info.thumbwidth || info.width) < IMAGE_MIN_WIDTH) continue;
         const license = info.extmetadata?.LicenseShortName?.value ?? '';
         if (!isFreeWikimediaLicense(license)) continue;
         const wid = `wiki_${page.pageid}`;
         if (_usedWikiIds.has(wid)) continue;
-        photos.push({
-          id: wid, url: info.thumburl || info.url,
-          alt: stripHtml(info.extmetadata?.ImageDescription?.value ?? '') || `${searchTerm} — Wikimedia Commons`,
-          width: info.thumbwidth || info.width, height: info.thumbheight || info.height, source: 'wikimedia',
-          wikiAttribution: stripHtml(info.extmetadata?.Artist?.value ?? '') || 'Wikimedia Commons contributor',
-          wikiLicense: license, wikiLicenseUrl: info.extmetadata?.LicenseUrl?.value ?? '',
-        });
+        photos.push({ id: wid, url: info.thumburl || info.url, alt: stripHtml(info.extmetadata?.ImageDescription?.value ?? '') || `${searchTerm} — Wikimedia Commons`, width: info.thumbwidth || info.width, height: info.thumbheight || info.height, source: 'wikimedia', wikiAttribution: stripHtml(info.extmetadata?.Artist?.value ?? '') || 'Wikimedia Commons contributor', wikiLicense: license, wikiLicenseUrl: info.extmetadata?.LicenseUrl?.value ?? '' });
         if (photos.length >= count) break;
       }
       await sleep(200);
@@ -718,11 +346,7 @@ async function fetchWikimedia(searchTerm: string, count = 2): Promise<HybridPhot
   return photos;
 }
 
-async function fetchAndSaveImages(
-  pexelsKey: string, articleId: number, title: string,
-  subcategory: string, imageQueries: string[],
-  log: (m: string, t: GenLog['type']) => void
-): Promise<number> {
+async function fetchAndSaveImages(pexelsKey: string, articleId: number, title: string, subcategory: string, imageQueries: string[], log: (m: string, t: GenLog['type']) => void): Promise<number> {
   const catConfig = HISTORY_CATEGORIES[subcategory];
   const allPhotos: HybridPhoto[] = [];
   const seen = new Set<string>();
@@ -738,21 +362,15 @@ async function fetchAndSaveImages(
     });
   };
 
-  // 1. AI-generated queries first
   for (const q of imageQueries.slice(0, 3)) {
     if (allPhotos.length >= TARGET_IMAGES) break;
     add(await fetchPexels(pexelsKey, q, 2));
     await sleep(300);
   }
-
-  // 2. Wikimedia for historical accuracy
   if (allPhotos.length < TARGET_IMAGES) {
-    const wikiQuery = imageQueries[0] ?? catConfig?.imageQueries[0] ?? 'ancient history ruins';
-    add(await fetchWikimedia(wikiQuery, 3));
+    add(await fetchWikimedia(imageQueries[0] ?? catConfig?.imageQueries[0] ?? 'ancient history ruins', 3));
     await sleep(300);
   }
-
-  // 3. Category fallbacks
   if (allPhotos.length < TARGET_IMAGES && catConfig) {
     for (const q of catConfig.imageQueries) {
       if (allPhotos.length >= TARGET_IMAGES) break;
@@ -762,7 +380,6 @@ async function fetchAndSaveImages(
   }
 
   if (allPhotos.length === 0) { log(`    ✗ No images found for "${title}"`, 'error'); return 0; }
-
   const toSave = allPhotos.slice(0, TARGET_IMAGES);
   const imageRows = toSave.map((photo, i) => ({
     article_id: articleId, image_url: photo.url, alt_text: photo.alt || title,
@@ -805,11 +422,20 @@ export default function AdminPanel() {
   const [selectedIds, setSelectedIds]         = useState<Set<number>>(new Set());
   const [deleting, setDeleting]               = useState(false);
 
+  // ── Topic Pool state ──────────────────────────────────────────────────────
+  const [topicPoolCounts, setTopicPoolCounts] = useState<TopicPoolCount[]>([]);
+  const [topicInputCat, setTopicInputCat]     = useState<string>('ancient-civilizations');
+  const [topicInputText, setTopicInputText]   = useState<string>('');
+  const [savingTopics, setSavingTopics]       = useState(false);
+  const [topicSaveMsg, setTopicSaveMsg]       = useState<string | null>(null);
+  const [showTopicPool, setShowTopicPool]     = useState(false);
+
   const logContainerRef = useRef<HTMLDivElement>(null);
   const stopRef         = useRef(false);
   const abortRef        = useRef<AbortController | null>(null);
 
   useEffect(() => { fetchArticles(); }, [filter, filterCat]);
+  useEffect(() => { fetchTopicPoolCounts(); }, []);
   useEffect(() => {
     const c = logContainerRef.current;
     if (c) c.scrollTop = c.scrollHeight;
@@ -818,6 +444,24 @@ export default function AdminPanel() {
   const addLog = useCallback((message: string, type: GenLog['type'] = 'info') => {
     setGenLogs(prev => [...prev.slice(-400), { id: Date.now() + Math.random(), message, type, ts: nowTS() }]);
   }, []);
+
+  // ── Fetch topic pool counts ───────────────────────────────────────────────
+  const fetchTopicPoolCounts = async () => {
+    const { data, error: e } = await supabase
+      .from('topic_pool')
+      .select('subcategory, is_used');
+    if (e || !data) return;
+
+    const counts: Record<string, { unused: number; total: number }> = {};
+    for (const row of data) {
+      if (!counts[row.subcategory]) counts[row.subcategory] = { unused: 0, total: 0 };
+      counts[row.subcategory].total++;
+      if (!row.is_used) counts[row.subcategory].unused++;
+    }
+    setTopicPoolCounts(
+      Object.entries(counts).map(([subcategory, v]) => ({ subcategory, ...v }))
+    );
+  };
 
   const fetchArticles = async () => {
     setLoading(true);
@@ -833,38 +477,64 @@ export default function AdminPanel() {
     finally { setLoading(false); }
   };
 
-  const selectArticle = async (article: Article) => {
-    if (selectMode) return;
-    setSelectedArticle(article);
-    setAdminNotes(article.admin_notes ?? '');
-    setError(null); setSuccess(null);
-    try {
-      const { data, error: e } = await supabase
-        .from('article_images').select('*').eq('article_id', article.id).order('position');
-      if (e) throw e;
-      setImages(data ?? []);
-    } catch (e: any) { setError(e.message); }
+  // ════════════════════════════════════════════════════════════════════════
+  // TOPIC POOL — save topics entered manually
+  // ════════════════════════════════════════════════════════════════════════
+  const handleSaveTopics = async () => {
+    const lines = topicInputText
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 10); // ignore blank / very short lines
+
+    if (lines.length === 0) {
+      setTopicSaveMsg('⚠️ No valid topics found. Enter one topic per line.');
+      return;
+    }
+
+    setSavingTopics(true);
+    setTopicSaveMsg(null);
+
+    // Build rows — topic_key is just a slug of the topic text (for UNIQUE constraint)
+    const rows = lines.map(topic => ({
+      subcategory: topicInputCat,
+      topic:       topic,
+      topic_key:   topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120),
+      is_used:     false,
+    }));
+
+    // upsert with ignoreDuplicates — safe to paste same topics twice
+    const { error: e } = await supabase
+      .from('topic_pool')
+      .upsert(rows, { onConflict: 'subcategory,topic_key', ignoreDuplicates: true });
+
+    if (e) {
+      setTopicSaveMsg(`❌ Save failed: ${e.message}`);
+    } else {
+      setTopicSaveMsg(`✅ ${lines.length} topics saved to ${HISTORY_CATEGORIES[topicInputCat]?.label}!`);
+      setTopicInputText('');
+      await fetchTopicPoolCounts();
+    }
+    setSavingTopics(false);
+    setTimeout(() => setTopicSaveMsg(null), 4000);
   };
 
-  const toggleSelect = (id: number) =>
-    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // ════════════════════════════════════════════════════════════════════════
+  // PICK TOPICS FROM DB (replaces hardcoded topicPool)
+  // ════════════════════════════════════════════════════════════════════════
+  const pickTopicsFromDB = async (subcategory: string, count: number): Promise<{ id: number; topic: string }[]> => {
+    const { data, error: e } = await supabase
+      .from('topic_pool')
+      .select('id, topic')
+      .eq('subcategory', subcategory)
+      .eq('is_used', false)
+      .order('created_at', { ascending: true }) // FIFO — oldest topics first
+      .limit(count);
+    if (e || !data) return [];
+    return data as { id: number; topic: string }[];
+  };
 
-  const deleteSelected = async () => {
-    if (!selectedIds.size) return;
-    if (!confirm(`Delete ${selectedIds.size} article(s)? Cannot be undone.`)) return;
-    setDeleting(true);
-    try {
-      const ids = [...selectedIds];
-      await supabase.from('article_images').delete().in('article_id', ids);
-      const { error: e } = await supabase.from('articles').delete().in('id', ids);
-      if (e) throw e;
-      if (selectedArticle && selectedIds.has(selectedArticle.id)) { setSelectedArticle(null); setImages([]); }
-      setSelectedIds(new Set()); setSelectMode(false);
-      setSuccess(`✅ Deleted ${ids.length} article(s).`);
-      await fetchArticles();
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e: any) { setError(e.message); }
-    finally { setDeleting(false); }
+  const markTopicUsed = async (id: number): Promise<void> => {
+    await supabase.from('topic_pool').update({ is_used: true }).eq('id', id);
   };
 
   // ════════════════════════════════════════════════════════════════════════
@@ -895,18 +565,8 @@ export default function AdminPanel() {
     const totalArticles  = categoryKeys.length * ARTICLES_PER_CATEGORY;
     setGenTotal(totalArticles);
 
-    log(`🏛️  Starting HISTORY pipeline — ${totalArticles} articles across ${categoryKeys.length} categories`, 'info');
-    log(`✍️  Author: ${AUTHOR.name} | 🤖 Groq llama-3.3-70b | 🖼 Pexels + Wikimedia | Auto-publish: score ≥ ${AUTO_PUBLISH_SCORE}`, 'info');
-    log(`📚 Coverage: BOTH well-known history AND hidden/overlooked history`, 'info');
-    log(`🔒 Deduplication: topic registry (100% — DB-level UNIQUE constraint)`, 'info');
-
-    // ── Load registry in ONE query for all 15 subcategories ─────────────────
-    let registeredKeys: Record<string, Set<string>> = {};
-    try {
-      registeredKeys = await loadAllRegisteredKeys();
-      const totalRegistered = Object.values(registeredKeys).reduce((s, v) => s + v.size, 0);
-      log(`✅ Registry loaded — ${totalRegistered} topics already covered across all subcategories`, 'success');
-    } catch { log('⚠ Could not load registry — dedup may be incomplete', 'warn'); }
+    log(`🏛️  Starting HISTORY pipeline — up to ${totalArticles} articles across ${categoryKeys.length} categories`, 'info');
+    log(`✍️  Author: ${AUTHOR.name} | Topics sourced from your topic_pool DB table`, 'info');
 
     let grandTotal = 0; let autoPublished = 0; let globalIdx = 0;
 
@@ -916,43 +576,26 @@ export default function AdminPanel() {
 
         const subcatKey = categoryKeys[ci];
         const catConfig = HISTORY_CATEGORIES[subcatKey];
-        const myKeys    = registeredKeys[subcatKey] ?? new Set<string>();
 
         log(`\n━━━ [${ci + 1}/${categoryKeys.length}] ${catConfig.emoji} ${catConfig.label.toUpperCase()} ━━━`, 'info');
-        log(`  📋 ${myKeys.size} topics already covered in this subcategory`, 'info');
 
-        // ── Filter topic pool through registry ───────────────────────────
-        const availableTopics = filterAvailableTopics(catConfig.topicPool, myKeys);
-        log(`  ✅ ${availableTopics.length} / ${catConfig.topicPool.length} pool topics still available`, 'info');
+        // ── Pick unused topics from DB ───────────────────────────────────
+        const pickedTopics = await pickTopicsFromDB(subcatKey, ARTICLES_PER_CATEGORY);
 
-        // If pool exhausted, log clearly and skip (no silent rotation)
-        if (availableTopics.length === 0) {
-          log(`  ⏭ Pool fully covered for ${catConfig.label} — skipping (add more topics to the pool)`, 'warn');
-          globalIdx += ARTICLES_PER_CATEGORY;
+        if (pickedTopics.length === 0) {
+          log(`  ⚠️  No unused topics in pool for ${catConfig.label} — skipping. Add topics in the Topic Pool section.`, 'warn');
           setGenDone(d => d + ARTICLES_PER_CATEGORY);
+          globalIdx += ARTICLES_PER_CATEGORY;
           continue;
         }
 
-        // Load covered titles for this subcategory to pass to Groq prompt
-        const coveredTitles = await loadCoveredTitles(subcatKey, 30);
+        log(`  📋 Picked ${pickedTopics.length} topic(s) from pool`, 'info');
 
-        const selectedTopics = availableTopics.slice(0, ARTICLES_PER_CATEGORY);
-
-        for (let ti = 0; ti < selectedTopics.length; ti++) {
+        for (let ti = 0; ti < pickedTopics.length; ti++) {
           if (stopRef.current) { log('⛔ Stopped.', 'error'); break; }
 
           globalIdx++;
-          const topic = selectedTopics[ti];
-
-          // ── Reserve topic in registry BEFORE writing ─────────────────
-          // If another run reserved this exact topic concurrently, skip it.
-          const { ok: reserved, key: topicKey } = await reserveTopic(subcatKey, topic);
-          if (!reserved) {
-            log(`  ⏭ Topic already reserved/covered: "${topic.substring(0, 50)}..." — skipping`, 'warn');
-            setGenDone(d => d + 1);
-            continue;
-          }
-          log(`  🔒 Reserved topic key: ${topicKey}`, 'info');
+          const { id: topicId, topic } = pickedTopics[ti];
 
           if (globalIdx > 1 && (globalIdx - 1) % BATCH_SIZE === 0) {
             const pm = Math.round(BATCH_PAUSE_MS / 60000);
@@ -964,7 +607,7 @@ export default function AdminPanel() {
           log(`\n  ✍️  [${globalIdx}/${totalArticles}] "${topic}"`, 'progress');
           setBatchInfo(`[${globalIdx}/${totalArticles}] Writing: ${topic.substring(0, 50)}...`);
 
-          // ── WRITE PART 1 ────────────────────────────────────────────────
+          // ── WRITE PART 1 ──────────────────────────────────────────────
           await sleep(2000);
           const part1Raw = await groqRequest(
             groqKeys[keyIndexRef.value],
@@ -975,23 +618,14 @@ export default function AdminPanel() {
                   `You are ${AUTHOR.name}, ${AUTHOR.tagline}.\n\n${AUTHOR.bio}\n\n` +
                   `Write the FIRST HALF of a gripping history article.\n\n` +
                   `TOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n` +
-                  // Pass covered titles so Groq avoids similar angles
-                  (coveredTitles.length > 0
-                    ? `ALREADY COVERED — do NOT write about these angles:\n${coveredTitles.slice(0, 20).map(t => `- ${t}`).join('\n')}\n\n`
-                    : '') +
                   `Structure with ## headings and **bold** key facts:\n\n` +
                   `## [Most surprising fact about this topic as a statement]\n` +
                   `(2-3 sentences) Open with the most surprising, counterintuitive, or little-known fact. **Bold** the key detail.\n\n` +
                   `## What Everyone Knows\n` +
-                  `(100-150 words) The popular understanding — what most educated people believe about this. Be fair to the mainstream narrative.\n\n` +
+                  `(100-150 words) The popular understanding.\n\n` +
                   `## What History Actually Shows\n` +
-                  `(300-400 words) The deeper, more accurate, or less-told version. **Bold** every key fact, number, date, or name. ` +
-                  `Include specific details — numbers, dates, names, places. Make it vivid.\n\n` +
-                  `RULES:\n` +
-                  `- Paragraphs separated by \\n\\n. No bullet points.\n` +
-                  `- Write entirely in your own voice. Do NOT reproduce phrasing from any specific book or Wikipedia.\n` +
-                  `- If uncertain about a specific detail, say "historians debate" or "estimates vary" rather than inventing it.\n` +
-                  `- Return ONLY the article text. No JSON. No preamble. Just the formatted text.`,
+                  `(300-400 words) The deeper, more accurate version. **Bold** every key fact.\n\n` +
+                  `RULES: Paragraphs separated by \\n\\n. No bullet points. Original voice only. Return article text only.`,
               },
               { role: 'user', content: `Write Part 1 for the ${catConfig.label} article: "${topic}"` },
             ],
@@ -999,13 +633,12 @@ export default function AdminPanel() {
           );
 
           if (!part1Raw || part1Raw.length < 200) {
-            log(`    ✗ Part 1 failed — releasing reservation`, 'error');
-            await releaseTopic(subcatKey, topicKey);
+            log(`    ✗ Part 1 failed — topic NOT marked as used`, 'error');
             setGenDone(d => d + 1);
             await sleep(INTER_ARTICLE_PAUSE_MS); continue;
           }
 
-          // ── WRITE PART 2 ────────────────────────────────────────────────
+          // ── WRITE PART 2 ──────────────────────────────────────────────
           await sleep(4000);
           const part2Raw = await groqRequest(
             groqKeys[keyIndexRef.value],
@@ -1015,16 +648,13 @@ export default function AdminPanel() {
                 content:
                   `You are ${AUTHOR.name}, ${AUTHOR.tagline}.\n\n` +
                   `Write the SECOND HALF of the history article about: "${topic}"\n\n` +
-                  `Continue with:\n\n` +
                   `## The Part That Got Buried\n` +
-                  `(200-250 words) What was deliberately overlooked, suppressed, or forgotten — and by whom. ` +
-                  `Be specific and opinionated. **Bold** what was erased or minimized.\n\n` +
+                  `(200-250 words) What was deliberately overlooked or suppressed.\n\n` +
                   `## The Ripple Effect\n` +
-                  `(150-200 words) How this event/person/era still shapes the world today. ` +
-                  `Make a direct connection to something a reader would recognize now.\n\n` +
+                  `(150-200 words) How this still shapes the world today.\n\n` +
                   `## The Line That Says It All\n` +
-                  `(1 sharp sentence) The most memorable, quotable takeaway from this entire story.\n\n` +
-                  `RULES: Same as Part 1. Original voice. No bullet points. Return article text only.`,
+                  `(1 sharp sentence) The most memorable takeaway.\n\n` +
+                  `RULES: Same as Part 1. Return article text only.`,
               },
               { role: 'user', content: `Write Part 2 for: "${topic}"` },
             ],
@@ -1033,41 +663,33 @@ export default function AdminPanel() {
 
           const fullContent = [part1Raw.trim(), (part2Raw ?? '').trim()].filter(Boolean).join('\n\n');
 
-          // ── META (title, summary, score, image queries) ──────────────────
+          // ── META ──────────────────────────────────────────────────────
           await sleep(3000);
           const metaRaw = await groqRequest(
             groqKeys[keyIndexRef.value],
             [
-              {
-                role: 'system',
-                content: 'Return ONLY raw valid JSON — no markdown, no backticks. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }',
-              },
+              { role: 'system', content: 'Return ONLY raw valid JSON — no markdown, no backticks. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
               {
                 role: 'user',
                 content:
                   `Generate metadata for history article about: "${topic}"\n\n` +
                   `Preview: ${fullContent.substring(0, 400)}\n\n` +
-                  `Return:\n` +
-                  `- title: 10-18 word compelling headline (not a plain statement — create intrigue)\n` +
-                  `- summary: 3 punchy teaser sentences without line breaks\n` +
-                  `- score: 0-10 quality rating\n` +
-                  `- image_queries: 6 specific Pexels search strings for ${catConfig.label} (ruins, artifacts, paintings, monuments — no person names)\n` +
-                  `Raw JSON only.`,
+                  `Return:\n- title: 10-18 word compelling headline\n- summary: 3 punchy teaser sentences\n- score: 0-10 quality rating\n- image_queries: 6 specific Pexels search strings\nRaw JSON only.`,
               },
             ],
             500, `${subcatKey}:meta:${ti + 1}`, log, groqKeys, keyExhausted, keyIndexRef, abortRef.current?.signal
           );
 
           interface HistoryMeta { title: string; summary: string; score: number; image_queries: string[] }
-          const meta   = metaRaw ? extractJSON<HistoryMeta>(metaRaw) : null;
-          const title  = meta?.title   ?? topic.substring(0, 200);
+          const meta    = metaRaw ? extractJSON<HistoryMeta>(metaRaw) : null;
+          const title   = meta?.title   ?? topic.substring(0, 200);
           const summary = meta?.summary ?? fullContent.substring(0, 300).replace(/\n/g, ' ');
-          const score  = clamp(parseFloat(String(meta?.score ?? 8.0)) || 8.0, 0, 10);
-          const imgQ   = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 6);
+          const score   = clamp(parseFloat(String(meta?.score ?? 8.0)) || 8.0, 0, 10);
+          const imgQ    = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 6);
 
           if (stopRef.current) break;
 
-          // ── SAVE TO DB ───────────────────────────────────────────────────
+          // ── SAVE TO DB ─────────────────────────────────────────────────
           const { data: saved, error: saveErr } = await supabase.from('articles').insert({
             title:          title.substring(0, 255),
             source_url:     null,
@@ -1088,7 +710,6 @@ export default function AdminPanel() {
 
           if (saveErr) {
             log(`    ✗ DB save failed: ${saveErr.message}`, 'error');
-            await releaseTopic(subcatKey, topicKey);
             setGenDone(d => d + 1); await sleep(INTER_ARTICLE_PAUSE_MS); continue;
           }
 
@@ -1096,18 +717,14 @@ export default function AdminPanel() {
           const articleId = (saved as any).id;
           log(`    ✅ Article #${articleId} saved | score ${score.toFixed(1)}`, 'success');
 
-          // ── Confirm topic in registry with real title + article ID ───────
-          await confirmTopic(subcatKey, topicKey, title, articleId);
-          // Also update local key set so subsequent topics in this run
-          // don't attempt the same key
-          if (!registeredKeys[subcatKey]) registeredKeys[subcatKey] = new Set();
-          registeredKeys[subcatKey].add(topicKey);
-          log(`    🔒 Registry confirmed: ${topicKey}`, 'info');
+          // ── Mark topic as used ONLY after successful article save ──────
+          await markTopicUsed(topicId);
+          log(`    🔒 Topic marked as used in pool`, 'info');
 
-          // ── IMAGES ───────────────────────────────────────────────────────
+          // ── IMAGES ────────────────────────────────────────────────────
           const imageCount = await fetchAndSaveImages(pexelsKey, articleId, title, subcatKey, imgQ, log);
 
-          // ── AUTO-PUBLISH ─────────────────────────────────────────────────
+          // ── AUTO-PUBLISH ──────────────────────────────────────────────
           const goodScore  = score >= AUTO_PUBLISH_SCORE;
           const hasImages  = imageCount >= MIN_IMAGES_TO_PUBLISH;
           if (goodScore && hasImages) {
@@ -1128,7 +745,7 @@ export default function AdminPanel() {
 
           fetchArticles();
           setGenDone(d => d + 1);
-          if (ti < selectedTopics.length - 1) await sleep(INTER_ARTICLE_PAUSE_MS);
+          if (ti < pickedTopics.length - 1) await sleep(INTER_ARTICLE_PAUSE_MS);
         }
 
         if (ci < categoryKeys.length - 1 && !stopRef.current) await sleep(2000);
@@ -1140,6 +757,7 @@ export default function AdminPanel() {
       log(`   📋 Left in drafts:   ${grandTotal - autoPublished}`, 'info');
       setSuccess(`✅ Done! ${grandTotal} articles written · ${autoPublished} auto-published · ${grandTotal - autoPublished} in drafts`);
       fetchArticles();
+      fetchTopicPoolCounts(); // refresh counts after run
 
     } catch (e: any) {
       log(`\n❌ Fatal: ${e.message}`, 'error');
@@ -1157,6 +775,40 @@ export default function AdminPanel() {
     addLog('⛔ Pipeline stopped.', 'error');
   };
 
+  // ── Article actions (unchanged) ───────────────────────────────────────────
+  const selectArticle = async (article: Article) => {
+    if (selectMode) return;
+    setSelectedArticle(article);
+    setAdminNotes(article.admin_notes ?? '');
+    setError(null); setSuccess(null);
+    try {
+      const { data, error: e } = await supabase.from('article_images').select('*').eq('article_id', article.id).order('position');
+      if (e) throw e;
+      setImages(data ?? []);
+    } catch (e: any) { setError(e.message); }
+  };
+
+  const toggleSelect = (id: number) =>
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const deleteSelected = async () => {
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} article(s)? Cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const ids = [...selectedIds];
+      await supabase.from('article_images').delete().in('article_id', ids);
+      const { error: e } = await supabase.from('articles').delete().in('id', ids);
+      if (e) throw e;
+      if (selectedArticle && selectedIds.has(selectedArticle.id)) { setSelectedArticle(null); setImages([]); }
+      setSelectedIds(new Set()); setSelectMode(false);
+      setSuccess(`✅ Deleted ${ids.length} article(s).`);
+      await fetchArticles();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e: any) { setError(e.message); }
+    finally { setDeleting(false); }
+  };
+
   const handleRefetchImages = async () => {
     if (!selectedArticle) return;
     setRefetchingImages(true); setError(null);
@@ -1166,11 +818,7 @@ export default function AdminPanel() {
       await supabase.from('article_images').delete().eq('article_id', selectedArticle.id);
       await supabase.from('articles').update({ image_url: null }).eq('id', selectedArticle.id);
       const catConfig = HISTORY_CATEGORIES[selectedArticle.subcategory ?? ''];
-      const count = await fetchAndSaveImages(
-        pexelsKey, selectedArticle.id, selectedArticle.title,
-        selectedArticle.subcategory ?? 'famous-figures',
-        catConfig?.imageQueries ?? [], (m) => console.log(m)
-      );
+      const count = await fetchAndSaveImages(pexelsKey, selectedArticle.id, selectedArticle.title, selectedArticle.subcategory ?? 'famous-figures', catConfig?.imageQueries ?? [], (m) => console.log(m));
       await selectArticle(selectedArticle);
       if (count > 0) { setSuccess(`✅ ${count} images refetched!`); setTimeout(() => setSuccess(null), 3000); }
       else setError('No images found — try uploading manually.');
@@ -1191,11 +839,7 @@ export default function AdminPanel() {
         const img = new Image();
         img.onload = async () => {
           try {
-            await supabase.from('article_images').insert({
-              article_id: selectedArticle.id, image_url: publicUrl,
-              position: images.length, width: img.width, height: img.height,
-              size_kb: Math.round(file.size / 1024), alt_text: 'Article image', image_source: 'upload',
-            });
+            await supabase.from('article_images').insert({ article_id: selectedArticle.id, image_url: publicUrl, position: images.length, width: img.width, height: img.height, size_kb: Math.round(file.size / 1024), alt_text: 'Article image', image_source: 'upload' });
             await selectArticle(selectedArticle);
             setSuccess('✅ Uploaded!'); setTimeout(() => setSuccess(null), 3000); res();
           } catch (err) { rej(err); }
@@ -1266,18 +910,138 @@ export default function AdminPanel() {
     return null;
   };
 
+  // Low topic warnings
+  const lowTopicCategories = topicPoolCounts.filter(c => c.unused < LOW_TOPIC_WARNING);
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900">📜 Signal History — Admin Panel</h1>
         <p className="text-gray-500 text-sm mt-1">
-          {Object.keys(HISTORY_CATEGORIES).length} history categories × {ARTICLES_PER_CATEGORY} articles = {Object.keys(HISTORY_CATEGORIES).length * ARTICLES_PER_CATEGORY} per run ·
-          Auto-publish score ≥ {AUTO_PUBLISH_SCORE} · Both well-known & hidden history
+          {Object.keys(HISTORY_CATEGORIES).length} categories · {ARTICLES_PER_CATEGORY} articles per run · Topics sourced from your pool
         </p>
       </div>
 
       <SchedulerPanel />
-     
+
+      {/* ── LOW TOPIC WARNINGS ──────────────────────────────────────────────── */}
+      {lowTopicCategories.length > 0 && (
+        <div className="mb-4 p-4 bg-orange-50 border border-orange-300 rounded-lg">
+          <p className="font-bold text-orange-800 text-sm mb-1">⚠️ Low topic pool — add more topics soon:</p>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {lowTopicCategories.map(c => {
+              const cat = HISTORY_CATEGORIES[c.subcategory];
+              return (
+                <span key={c.subcategory} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded font-medium">
+                  {cat?.emoji} {cat?.label}: {c.unused} left
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── TOPIC POOL SECTION ──────────────────────────────────────────────── */}
+      <Card className="mb-6 overflow-hidden border-2 border-blue-200">
+        <div
+          className="p-4 bg-blue-50 flex items-center justify-between cursor-pointer"
+          onClick={() => setShowTopicPool(s => !s)}
+        >
+          <div className="flex items-center gap-2">
+            <BookOpen size={20} className="text-blue-600" />
+            <h2 className="font-bold text-blue-900 text-lg">Topic Pool Manager</h2>
+            <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full font-medium">
+              {topicPoolCounts.reduce((s, c) => s + c.unused, 0)} unused topics across all categories
+            </span>
+          </div>
+          <span className="text-blue-500 text-sm">{showTopicPool ? '▲ Hide' : '▼ Show'}</span>
+        </div>
+
+        {showTopicPool && (
+          <div className="p-5 border-t border-blue-100">
+            {/* ── Pool counts per category ──────────────────────────────── */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-6">
+              {Object.entries(HISTORY_CATEGORIES).map(([key, cat]) => {
+                const counts = topicPoolCounts.find(c => c.subcategory === key);
+                const unused = counts?.unused ?? 0;
+                const total  = counts?.total  ?? 0;
+                const isLow  = unused < LOW_TOPIC_WARNING;
+                return (
+                  <div
+                    key={key}
+                    onClick={() => { setTopicInputCat(key); }}
+                    className={`p-2 rounded-lg border text-center cursor-pointer transition ${
+                      topicInputCat === key
+                        ? 'border-blue-500 bg-blue-50'
+                        : isLow
+                        ? 'border-orange-300 bg-orange-50'
+                        : 'border-gray-200 bg-white hover:border-blue-300'
+                    }`}
+                  >
+                    <p className="text-lg">{cat.emoji}</p>
+                    <p className="text-xs font-medium text-gray-700 leading-tight mt-0.5">{cat.label}</p>
+                    <p className={`text-xs font-bold mt-1 ${isLow ? 'text-orange-600' : 'text-green-600'}`}>
+                      {unused} unused
+                    </p>
+                    <p className="text-xs text-gray-400">{total} total</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Topic input ───────────────────────────────────────────── */}
+            <div className="bg-white border border-blue-200 rounded-xl p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Adding topics to:
+                  </label>
+                  <select
+                    value={topicInputCat}
+                    onChange={e => setTopicInputCat(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                  >
+                    {Object.entries(HISTORY_CATEGORIES).map(([key, cat]) => (
+                      <option key={key} value={key}>{cat.emoji} {cat.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Enter topics — one per line:
+              </label>
+              <Textarea
+                value={topicInputText}
+                onChange={e => setTopicInputText(e.target.value)}
+                placeholder={`Example:\nthe engineering genius behind the Egyptian pyramids that modern architects still cannot replicate\nthe real reason Rome fell — not barbarians, but something far more internal and surprising\nthe hidden female pharaohs of Egypt that male successors tried to erase from history`}
+                className="min-h-[160px] text-sm font-mono mb-3 border-gray-300"
+              />
+
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-400">
+                  {topicInputText.split('\n').filter(l => l.trim().length > 10).length} valid topics detected
+                </p>
+                <Button
+                  onClick={handleSaveTopics}
+                  disabled={savingTopics || topicInputText.trim().length === 0}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6"
+                >
+                  <Plus size={16} className="mr-1.5" />
+                  {savingTopics ? 'Saving...' : 'Save Topics to Pool'}
+                </Button>
+              </div>
+
+              {topicSaveMsg && (
+                <p className={`mt-2 text-sm font-medium ${topicSaveMsg.startsWith('✅') ? 'text-green-600' : 'text-orange-600'}`}>
+                  {topicSaveMsg}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* ── GENERATE CARD ─────────────────────────────────────────────────── */}
       <Card className="mb-6 overflow-hidden border-2 border-amber-200">
         <div className="p-5 bg-amber-50">
@@ -1288,14 +1052,8 @@ export default function AdminPanel() {
                 Generate All 15 History Categories
               </h2>
               <p className="text-sm text-amber-700 mb-3">
-                Writes {ARTICLES_PER_CATEGORY} articles per category — covering both the famous story <em>and</em> the hidden version.
-                100% original writing. No copyright risk.
+                Picks {ARTICLES_PER_CATEGORY} unused topics per category from your pool → writes articles → marks topics as used.
               </p>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-amber-700 mb-3">
-                {Object.values(HISTORY_CATEGORIES).map(c => (
-                  <span key={c.label}>{c.emoji} {c.label}</span>
-                ))}
-              </div>
               {generating && (
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs font-medium text-amber-800">
@@ -1333,7 +1091,6 @@ export default function AdminPanel() {
         )}
       </Card>
 
-
       {/* Messages */}
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-lg text-red-800">
@@ -1369,7 +1126,6 @@ export default function AdminPanel() {
               </div>
             </div>
 
-            {/* Status filter */}
             <div className="flex gap-1 mb-2">
               {(['draft', 'published', 'all'] as const).map(f => (
                 <button key={f} onClick={() => setFilter(f)}
@@ -1379,7 +1135,6 @@ export default function AdminPanel() {
               ))}
             </div>
 
-            {/* Category filter */}
             <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
               className="w-full mb-3 text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700">
               <option value="all">All categories</option>
@@ -1399,7 +1154,7 @@ export default function AdminPanel() {
               {!loading && articles.length === 0 && (
                 <div className="text-center text-gray-400 py-10">
                   <p className="text-3xl mb-2">📜</p>
-                  <p className="text-sm">No articles yet. Click Generate History to start.</p>
+                  <p className="text-sm">No articles yet.</p>
                 </div>
               )}
               {articles.map(article => {

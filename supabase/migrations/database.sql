@@ -655,3 +655,19 @@ ON CONFLICT (key) DO NOTHING;
 SELECT key, value FROM public.settings
 WHERE key LIKE 'schedule_%'
 ORDER BY key;
+
+
+CREATE TABLE topic_pool (
+  id            BIGSERIAL PRIMARY KEY,
+  subcategory   TEXT NOT NULL,
+  topic         TEXT NOT NULL,
+  topic_key     TEXT NOT NULL,
+  is_used       BOOLEAN NOT NULL DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(subcategory, topic_key)
+);
+
+-- Index for fast querying of unused topics per subcategory
+CREATE INDEX idx_topic_pool_subcategory_unused 
+  ON topic_pool(subcategory, is_used) 
+  WHERE is_used = false;

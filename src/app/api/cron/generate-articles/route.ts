@@ -1,34 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import {
-  loadAllRegisteredKeys,
-  loadCoveredTitles,
-  reserveTopic,
-  confirmTopic,
-  releaseTopic,
-  filterAvailableTopics,
-} from '@/lib/topicRegistry';
+import { HISTORY_CATEGORIES } from '@/lib/historyCategories';
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
 function isAuthorized(req: NextRequest): boolean {
-  const auth = req.headers.get('authorization') ?? '';
-  return auth === `Bearer ${process.env.CRON_SECRET}`;
+  return req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`;
 }
 
 function getSupabase() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
 const GROQ_TIMEOUT_MS        = 40_000;
 const INTER_ARTICLE_PAUSE_MS = 8_000;
-const BATCH_SIZE             = 10;
-const BATCH_PAUSE_MS         = 5 * 60 * 1000;
 const MAX_RETRIES            = 5;
-const DEFAULT_PER_CATEGORY   = 2;
 const AUTO_PUBLISH_SCORE     = 7.5;
 const TARGET_IMAGES          = 6;
 const MIN_IMAGES_TO_PUBLISH  = 2;
@@ -41,13 +25,57 @@ const AUTHOR = {
 AND hidden chapters. 100% original writing. Ends every article with a one-liner that sticks.`,
 };
 
-// Imported from AdminPanel — same 15 categories, same topic pools
-// (kept in a shared lib in production; duplicated here for API route isolation)
-import { HISTORY_CATEGORIES } from '@/lib/historyCategories';
-
-// ─── Groq ─────────────────────────────────────────────────────────────────────
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// ─── Settings helpers ─────────────────────────────────────────────────────────
+async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Promise<string> {
+  const { data } = await db.from('settings').select('value').eq('key', key).single();
+  return data?.value ?? '';
+}
+
+async function setSetting(db: ReturnType<typeof getSupabase>, key: string, value: string) {
+  await db.from('settings').upsert({ key, value, updated_at: new Date().toISOString() });
+}
+
+// ─── Topic Pool helpers ───────────────────────────────────────────────────────
+async function pickTopicsFromPool(
+  db: ReturnType<typeof getSupabase>,
+  subcategory: string,
+  count: number
+): Promise<{ id: number; topic: string }[]> {
+  const { data, error } = await db
+    .from('topic_pool')
+    .select('id, topic')
+    .eq('subcategory', subcategory)
+    .eq('is_used', false)
+    .order('created_at', { ascending: true }) // FIFO — oldest topics first
+    .limit(count);
+
+  if (error || !data) return [];
+  return data as { id: number; topic: string }[];
+}
+
+async function markTopicUsed(
+  db: ReturnType<typeof getSupabase>,
+  id: number
+): Promise<void> {
+  await db.from('topic_pool').update({ is_used: true }).eq('id', id);
+}
+
+// Get count of unused topics for a subcategory — used for category selection
+async function getUnusedTopicCount(
+  db: ReturnType<typeof getSupabase>,
+  subcategory: string
+): Promise<number> {
+  const { count } = await db
+    .from('topic_pool')
+    .select('id', { count: 'exact', head: true })
+    .eq('subcategory', subcategory)
+    .eq('is_used', false);
+  return count ?? 0;
+}
+
+// ─── Groq ─────────────────────────────────────────────────────────────────────
 async function groqRequest(
   messages: { role: string; content: string }[],
   maxTokens: number
@@ -57,7 +85,6 @@ async function groqRequest(
     process.env.GROQ_API_KEY_2,
     process.env.GROQ_API_KEY_3,
   ].filter(Boolean) as string[];
-
   if (keys.length === 0) throw new Error('No GROQ_API_KEY set');
 
   for (let attempt = 0; attempt < MAX_RETRIES * keys.length; attempt++) {
@@ -140,209 +167,207 @@ async function saveImages(
   return rows.length;
 }
 
-// ─── Write one article ────────────────────────────────────────────────────────
-async function writeArticle(
-  db: ReturnType<typeof getSupabase>,
-  subcatKey: string,
-  topic: string,
-  coveredTitles: string[],
-  articlesPerCategory: number,
-  dryRun: boolean
-): Promise<{ status: string; title?: string; articleId?: number; score?: number }> {
-  const catConfig = HISTORY_CATEGORIES[subcatKey];
-
-  // Reserve topic in registry BEFORE writing
-  const { ok: reserved, key: topicKey } = await reserveTopic(subcatKey, topic);
-  if (!reserved) return { status: 'already_reserved' };
-
-  try {
-    // Part 1
-    await sleep(2000);
-    const part1 = await groqRequest([
-      {
-        role: 'system',
-        content:
-          `You are ${AUTHOR.name}, ${AUTHOR.tagline}. ${AUTHOR.bio}\n\n` +
-          `Write the FIRST HALF of a gripping history article.\n` +
-          `TOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n` +
-          (coveredTitles.length > 0
-            ? `ALREADY COVERED — avoid these angles:\n${coveredTitles.slice(0, 20).map(t => `- ${t}`).join('\n')}\n\n`
-            : '') +
-          `## [Most surprising fact as a statement]\n(2-3 sentences)\n\n` +
-          `## What Everyone Knows\n(100-150 words)\n\n` +
-          `## What History Actually Shows\n(300-400 words, bold key facts)\n\n` +
-          `RULES: Paragraphs separated by \\n\\n. No bullet points. Original voice only. Return text only.`,
-      },
-      { role: 'user', content: `Write Part 1: "${topic}"` },
-    ], 1500);
-
-    if (!part1 || part1.length < 200) {
-      await releaseTopic(subcatKey, topicKey);
-      return { status: 'part1_failed' };
-    }
-
-    // Part 2
-    await sleep(4000);
-    const part2 = await groqRequest([
-      {
-        role: 'system',
-        content:
-          `You are ${AUTHOR.name}. Write the SECOND HALF about: "${topic}"\n\n` +
-          `## The Part That Got Buried\n(200-250 words)\n\n` +
-          `## The Ripple Effect\n(150-200 words)\n\n` +
-          `## The Line That Says It All\n(1 sentence)\n\n` +
-          `RULES: Original voice. No bullet points. Return text only.`,
-      },
-      { role: 'user', content: `Write Part 2 for: "${topic}"` },
-    ], 1200);
-
-    const fullContent = [part1.trim(), (part2 ?? '').trim()].filter(Boolean).join('\n\n');
-
-    // Meta
-    await sleep(3000);
-    const metaRaw = await groqRequest([
-      { role: 'system', content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
-      {
-        role: 'user',
-        content:
-          `Metadata for history article about: "${topic}"\nPreview: ${fullContent.substring(0, 400)}\n` +
-          `Return: compelling 10-18 word title, 3-sentence summary, score 0-10, 6 Pexels image queries for ${catConfig.label}. Raw JSON only.`,
-      },
-    ], 500);
-
-    interface Meta { title: string; summary: string; score: number; image_queries: string[] }
-    const meta    = extractJSON<Meta>(metaRaw);
-    const title   = meta?.title   ?? topic.substring(0, 200);
-    const summary = meta?.summary ?? fullContent.substring(0, 300).replace(/\n/g, ' ');
-    const score   = Math.min(10, Math.max(0, parseFloat(String(meta?.score ?? 8.0)) || 8.0));
-    const imgQ    = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 4);
-
-    if (dryRun) {
-      await releaseTopic(subcatKey, topicKey);
-      return { status: 'dry_run', title, score };
-    }
-
-    // Save
-    const { data: saved, error: saveErr } = await db.from('articles').insert({
-      title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
-      summary: summary.substring(0, 500), raw_content: fullContent,
-      category: 'history', subcategory: subcatKey, score,
-      era: catConfig.era, difficulty: 'both',
-      published_date: new Date().toISOString(),
-      is_draft: true, is_published: false, image_url: null,
-      admin_notes: `Topic: "${topic}" | Auto: generate-articles API`,
-    }).select('id').single();
-
-    if (saveErr) {
-      await releaseTopic(subcatKey, topicKey);
-      return { status: `save_failed: ${saveErr.message}` };
-    }
-
-    const articleId = (saved as any).id;
-    await confirmTopic(subcatKey, topicKey, title, articleId);
-
-    // Images
-    const imageCount = await saveImages(db, articleId, title, subcatKey, imgQ);
-
-    // Auto-publish
-    let finalStatus = `draft`;
-    if (score >= AUTO_PUBLISH_SCORE && imageCount >= MIN_IMAGES_TO_PUBLISH) {
-      const { data: verify } = await db.from('articles').select('raw_content, image_url').eq('id', articleId).single();
-      if ((verify as any)?.raw_content?.length > 200 && (verify as any)?.image_url) {
-        await db.from('articles')
-          .update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() })
-          .eq('id', articleId);
-        finalStatus = `published`;
-      }
-    } else {
-      const reason = imageCount < MIN_IMAGES_TO_PUBLISH ? `${imageCount} images` : `score ${score.toFixed(1)}`;
-      finalStatus = `draft (${reason})`;
-    }
-
-    return { status: finalStatus, title, articleId, score };
-
-  } catch (err: any) {
-    await releaseTopic(subcatKey, topicKey);
-    return { status: `error: ${err.message}` };
-  }
-}
-
 // ════════════════════════════════════════════════════════════════════════════
-// ROUTE HANDLER — runs all 15 subcategories sequentially
+// ROUTE HANDLER
 // ════════════════════════════════════════════════════════════════════════════
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const db   = getSupabase();
   const body = await req.json().catch(() => ({}));
-  const articlesPerCategory: number = Math.min(body?.articlesPerCategory ?? DEFAULT_PER_CATEGORY, 5);
-  const dryRun: boolean             = body?.dryRun === true;
 
-  const db = getSupabase();
-  const categoryKeys = Object.keys(HISTORY_CATEGORIES);
-  const totalExpected = categoryKeys.length * articlesPerCategory;
+  const isManual: boolean             = body?.manual === true;
+  const targetSubcategory: string | null = body?.subcategory ?? null;
+  const articlesPerRun: number        = body?.articlesPerRun ?? 2;
 
-  const summary = {
-    total: 0, published: 0, drafts: 0, skipped: 0, errors: 0, dryRun,
-    articlesPerCategory, totalExpected,
-    details: [] as { subcategory: string; topic: string; status: string; score?: number }[],
+  // ── Schedule gate (skipped for manual triggers) ───────────────────────────
+  if (!isManual) {
+    const enabled = await getSetting(db, 'schedule_enabled');
+    if (enabled !== 'true') {
+      return NextResponse.json({ success: true, skipped: true, reason: 'Schedule disabled' }, { status: 200 });
+    }
+    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '2', 10);
+    const currentHour    = new Date().getUTCHours();
+    if (currentHour !== configuredHour) {
+      return NextResponse.json({
+        success: true, skipped: true,
+        reason: `Not scheduled hour. Configured: ${configuredHour}:00 UTC, Current: ${currentHour}:00 UTC`,
+      }, { status: 200 });
+    }
+  }
+
+  await setSetting(db, 'schedule_status', 'running');
+  await setSetting(db, 'schedule_last_run', new Date().toISOString());
+
+  const results = {
+    total: 0, published: 0, drafts: 0, skipped: 0, errors: 0,
+    details: [] as { subcategory: string; title: string; status: string }[],
   };
 
   try {
-    // Load entire registry in one query
-    const registeredKeys = await loadAllRegisteredKeys();
-    let globalIdx = 0;
+    const allKeys = Object.keys(HISTORY_CATEGORIES);
 
-    for (let ci = 0; ci < categoryKeys.length; ci++) {
-      const subcatKey = categoryKeys[ci];
+    // ── Determine which subcategory to write for ──────────────────────────
+    let targetKeys: string[];
+
+    if (targetSubcategory && HISTORY_CATEGORIES[targetSubcategory]) {
+      // Explicit subcategory passed in request body
+      targetKeys = [targetSubcategory];
+    } else {
+      // Pick a random subcategory that still has unused topics in the pool
+      const categoriesWithTopics: string[] = [];
+      for (const key of allKeys) {
+        const count = await getUnusedTopicCount(db, key);
+        if (count > 0) categoriesWithTopics.push(key);
+      }
+
+      if (categoriesWithTopics.length === 0) {
+        await setSetting(db, 'schedule_status', 'idle');
+        return NextResponse.json({
+          success: true, skipped: true,
+          reason: 'All topic pools are empty. Add more topics in the Admin Panel.',
+          ...results,
+        }, { status: 200 });
+      }
+
+      const pick = categoriesWithTopics[Math.floor(Math.random() * categoriesWithTopics.length)];
+      targetKeys = [pick];
+    }
+
+    // ── Write articles for each target subcategory ────────────────────────
+    for (const subcatKey of targetKeys) {
       const catConfig = HISTORY_CATEGORIES[subcatKey];
-      const myKeys    = registeredKeys[subcatKey] ?? new Set<string>();
-      const available = filterAvailableTopics(catConfig.topicPool, myKeys);
 
-      if (available.length === 0) {
-        summary.skipped += articlesPerCategory;
-        summary.details.push({ subcategory: subcatKey, topic: '', status: 'pool_exhausted' });
+      // Pick unused topics from DB pool
+      const pickedTopics = await pickTopicsFromPool(db, subcatKey, articlesPerRun);
+
+      if (pickedTopics.length === 0) {
+        results.skipped++;
+        results.details.push({ subcategory: subcatKey, title: '', status: 'no_topics_in_pool' });
         continue;
       }
 
-      const coveredTitles  = await loadCoveredTitles(subcatKey, 30);
-      const selectedTopics = available.slice(0, articlesPerCategory);
+      for (const { id: topicId, topic } of pickedTopics) {
+        try {
+          await sleep(2000);
+          const part1 = await groqRequest([
+            {
+              role: 'system',
+              content:
+                `You are ${AUTHOR.name}, ${AUTHOR.tagline}. ${AUTHOR.bio}\n\n` +
+                `TOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n` +
+                `## [Most surprising fact]\n(2-3 sentences)\n\n` +
+                `## What Everyone Knows\n(100-150 words)\n\n` +
+                `## What History Actually Shows\n(300-400 words, bold key facts)\n\n` +
+                `RULES: Paragraphs \\n\\n. No bullets. Original voice. Return text only.`,
+            },
+            { role: 'user', content: `Write Part 1: "${topic}"` },
+          ], 1500);
 
-      for (const topic of selectedTopics) {
-        globalIdx++;
+          if (!part1 || part1.length < 200) {
+            results.errors++;
+            results.details.push({ subcategory: subcatKey, title: topic, status: 'part1_failed' });
+            continue;
+          }
 
-        // Batch pause every BATCH_SIZE articles
-        if (globalIdx > 1 && (globalIdx - 1) % BATCH_SIZE === 0) {
-          await sleep(BATCH_PAUSE_MS);
+          await sleep(4000);
+          const part2 = await groqRequest([
+            {
+              role: 'system',
+              content:
+                `You are ${AUTHOR.name}. Second half for: "${topic}"\n\n` +
+                `## The Part That Got Buried\n(200-250 words)\n\n` +
+                `## The Ripple Effect\n(150-200 words)\n\n` +
+                `## The Line That Says It All\n(1 sentence)\n\n` +
+                `Original voice. Return text only.`,
+            },
+            { role: 'user', content: `Write Part 2: "${topic}"` },
+          ], 1200);
+
+          const fullContent = [part1.trim(), (part2 ?? '').trim()].filter(Boolean).join('\n\n');
+
+          await sleep(3000);
+          const metaRaw = await groqRequest([
+            { role: 'system', content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
+            {
+              role: 'user',
+              content:
+                `Metadata for: "${topic}"\nPreview: ${fullContent.substring(0, 400)}\n` +
+                `Compelling 10-18 word title, 3-sentence summary, score 0-10, 6 Pexels image queries. Raw JSON only.`,
+            },
+          ], 500);
+
+          interface Meta { title: string; summary: string; score: number; image_queries: string[] }
+          const meta    = extractJSON<Meta>(metaRaw);
+          const title   = meta?.title   ?? topic.substring(0, 200);
+          const summary = meta?.summary ?? fullContent.substring(0, 300).replace(/\n/g, ' ');
+          const score   = Math.min(10, Math.max(0, parseFloat(String(meta?.score ?? 8.0)) || 8.0));
+          const imgQ    = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 4);
+
+          // Save article
+          const { data: saved, error: saveErr } = await db.from('articles').insert({
+            title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
+            summary: summary.substring(0, 500), raw_content: fullContent,
+            category: 'history', subcategory: subcatKey, score,
+            era: catConfig.era, difficulty: 'both',
+            published_date: new Date().toISOString(),
+            is_draft: true, is_published: false, image_url: null,
+            admin_notes: `Topic: "${topic}" | ${isManual ? 'Manual trigger' : 'Auto cron'}`,
+          }).select('id').single();
+
+          if (saveErr) {
+            results.errors++;
+            results.details.push({ subcategory: subcatKey, title: topic, status: `save_failed: ${saveErr.message}` });
+            continue;
+          }
+
+          const articleId = (saved as any).id;
+
+          // Mark topic as used ONLY after successful article save
+          await markTopicUsed(db, topicId);
+          results.total++;
+
+          // Images
+          const imageCount = await saveImages(db, articleId, title, subcatKey, imgQ);
+
+          // Auto-publish
+          if (score >= AUTO_PUBLISH_SCORE && imageCount >= MIN_IMAGES_TO_PUBLISH) {
+            const { data: verify } = await db.from('articles').select('raw_content, image_url').eq('id', articleId).single();
+            if ((verify as any)?.raw_content?.length > 200 && (verify as any)?.image_url) {
+              await db.from('articles')
+                .update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() })
+                .eq('id', articleId);
+              results.published++;
+              results.details.push({ subcategory: subcatKey, title, status: `published (score ${score.toFixed(1)})` });
+            } else {
+              results.drafts++;
+              results.details.push({ subcategory: subcatKey, title, status: 'draft' });
+            }
+          } else {
+            results.drafts++;
+            results.details.push({ subcategory: subcatKey, title, status: `draft (score ${score.toFixed(1)})` });
+          }
+
+          await sleep(INTER_ARTICLE_PAUSE_MS);
+
+        } catch (err: any) {
+          results.errors++;
+          results.details.push({ subcategory: subcatKey, title: topic, status: `error: ${err.message}` });
         }
-
-        const result = await writeArticle(db, subcatKey, topic, coveredTitles, articlesPerCategory, dryRun);
-
-        summary.details.push({ subcategory: subcatKey, topic, status: result.status, score: result.score });
-
-        if (result.status === 'already_reserved' || result.status === 'pool_exhausted') {
-          summary.skipped++;
-        } else if (result.status.startsWith('error') || result.status.endsWith('_failed')) {
-          summary.errors++;
-        } else if (result.status === 'published') {
-          summary.total++;
-          summary.published++;
-        } else {
-          summary.total++;
-          summary.drafts++;
-        }
-
-        // Update local registry so next topic in this run respects the reservation
-        if (!registeredKeys[subcatKey]) registeredKeys[subcatKey] = new Set();
-
-        await sleep(INTER_ARTICLE_PAUSE_MS);
       }
     }
 
-    return NextResponse.json({ success: true, ...summary }, { status: 200 });
+    await setSetting(db, 'schedule_status', 'idle');
+    await setSetting(db, 'schedule_next_run', new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());
+
+    return NextResponse.json({ success: true, ...results }, { status: 200 });
 
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message, ...summary }, { status: 500 });
+    await setSetting(db, 'schedule_status', 'error');
+    return NextResponse.json({ success: false, error: err.message, ...results }, { status: 500 });
   }
 }
+
+export async function GET(req: NextRequest) { return POST(req); }
