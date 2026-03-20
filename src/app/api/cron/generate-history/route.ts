@@ -27,6 +27,15 @@ AND hidden chapters. 100% original writing. Ends every article with a one-liner 
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// Always snaps to the exact configured UTC hour, never drifts
+function computeNextRun(hourUtc: number): string {
+  const now  = new Date();
+  const next = new Date();
+  next.setUTCHours(hourUtc, 0, 0, 0);
+  if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString();
+}
+
 // ─── Settings helpers ─────────────────────────────────────────────────────────
 async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Promise<string> {
   const { data } = await db.from('settings').select('value').eq('key', key).single();
@@ -54,10 +63,7 @@ async function pickTopicsFromPool(
   return data as { id: number; topic: string }[];
 }
 
-async function markTopicUsed(
-  db: ReturnType<typeof getSupabase>,
-  id: number
-): Promise<void> {
+async function markTopicUsed(db: ReturnType<typeof getSupabase>, id: number): Promise<void> {
   await db.from('topic_pool').update({ is_used: true }).eq('id', id);
 }
 
@@ -186,17 +192,20 @@ export async function POST(req: NextRequest) {
     if (enabled !== 'true') {
       return NextResponse.json({ success: true, skipped: true, reason: 'Schedule disabled' }, { status: 200 });
     }
-    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '2', 10);
+
+    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '23', 10);
     const currentHour    = new Date().getUTCHours();
+
     if (currentHour !== configuredHour) {
       return NextResponse.json({
-        success: true, skipped: true,
+        success: true,
+        skipped: true,
         reason: `Not scheduled hour. Configured: ${configuredHour}:00 UTC, Current: ${currentHour}:00 UTC`,
       }, { status: 200 });
     }
   }
 
-  await setSetting(db, 'schedule_status', 'running');
+  await setSetting(db, 'schedule_status',   'running');
   await setSetting(db, 'schedule_last_run', new Date().toISOString());
 
   const results = {
@@ -213,7 +222,6 @@ export async function POST(req: NextRequest) {
     if (targetSubcategory && HISTORY_CATEGORIES[targetSubcategory]) {
       targetKeys = [targetSubcategory];
     } else {
-      // Pick a random subcategory that still has unused topics in the pool
       const categoriesWithTopics: string[] = [];
       for (const key of allKeys) {
         const count = await getUnusedTopicCount(db, key);
@@ -240,8 +248,7 @@ export async function POST(req: NextRequest) {
 
     // ── Write articles for each target subcategory ────────────────────────
     for (const subcatKey of targetKeys) {
-      const catConfig = HISTORY_CATEGORIES[subcatKey];
-
+      const catConfig    = HISTORY_CATEGORIES[subcatKey];
       const pickedTopics = await pickTopicsFromPool(db, subcatKey, articlesPerRun);
 
       if (pickedTopics.length === 0) {
@@ -291,7 +298,10 @@ export async function POST(req: NextRequest) {
 
           await sleep(3000);
           const metaRaw = await groqRequest([
-            { role: 'system', content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
+            {
+              role: 'system',
+              content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }',
+            },
             {
               role: 'user',
               content:
@@ -324,8 +334,6 @@ export async function POST(req: NextRequest) {
           }
 
           const articleId = (saved as any).id;
-
-          // Mark topic as used ONLY after successful article save
           await markTopicUsed(db, topicId);
           results.total++;
 
@@ -357,8 +365,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await setSetting(db, 'schedule_status', 'idle');
-    await setSetting(db, 'schedule_next_run', new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());
+    // Use computeNextRun so next run is always at the exact configured hour, never drifts
+    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '23', 10);
+    await setSetting(db, 'schedule_status',   'idle');
+    await setSetting(db, 'schedule_next_run', computeNextRun(configuredHour));
 
     return NextResponse.json({ success: true, ...results }, { status: 200 });
 

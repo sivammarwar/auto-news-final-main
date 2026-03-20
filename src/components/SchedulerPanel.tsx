@@ -6,19 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { HISTORY_CATEGORIES } from '@/lib/historyCategories';
 
-function utcToIST(utcHour: number): string {
+// Every UTC hour mapped to its IST equivalent label
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, utcHour) => {
   const istMinutes = utcHour * 60 + 330;
   const h = Math.floor((istMinutes % 1440) / 60);
   const m = istMinutes % 60;
-  const period = h >= 12 ? 'PM' : 'AM';
+  const period  = h >= 12 ? 'PM' : 'AM';
   const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${display}:${m.toString().padStart(2, '0')} ${period} IST`;
-}
-
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, utcHour) => ({
-  utcHour,
-  label: `${utcHour.toString().padStart(2, '0')}:00 UTC — ${utcToIST(utcHour)}`,
-}));
+  const ist     = `${display}:${m.toString().padStart(2, '0')} ${period} IST`;
+  return { utcHour, label: `${utcHour.toString().padStart(2, '0')}:00 UTC  =  ${ist}` };
+});
 
 const formatDate = (iso: string) => {
   if (!iso) return '—';
@@ -28,9 +25,8 @@ const formatDate = (iso: string) => {
   });
 };
 
-/** Compute the next wall-clock occurrence of a UTC hour (always in the future). */
 function computeNextRun(hourUtc: number): string {
-  const now = new Date();
+  const now  = new Date();
   const next = new Date();
   next.setUTCHours(hourUtc, 0, 0, 0);
   if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
@@ -50,14 +46,12 @@ interface TriggerLog {
 }
 
 export default function SchedulerPanel() {
-  // ── FIX: separate "saved to DB" state from "local editing" state ──────────
-  // We use a ref to track whether a save is in-flight so loadSettings()
-  // doesn't clobber the user's in-progress edits.
   const savingRef     = useRef(false);
   const bulkSavingRef = useRef(false);
 
   const [settings, setSettings] = useState<ScheduleSettings>({
-    enabled: true, hourUtc: 2, articlesPerCat: 2, status: 'idle', lastRun: '', nextRun: '',
+    enabled: true, hourUtc: 23, articlesPerCat: 2,
+    status: 'idle', lastRun: '', nextRun: '',
   });
   const [saving, setSaving]             = useState(false);
   const [triggering, setTriggering]     = useState(false);
@@ -79,8 +73,6 @@ export default function SchedulerPanel() {
   const addBulkLog = (message: string, type: TriggerLog['type'] = 'info') =>
     setBulkLogs(prev => [...prev, { id: Date.now() + Math.random(), message, type }]);
 
-  // ── FIX: loadSettings only applies remote values when no save is in-flight.
-  // This prevents the DB round-trip from reverting the user's pending edits.
   const loadSettings = useCallback(async () => {
     const { data } = await supabase
       .from('settings')
@@ -90,10 +82,8 @@ export default function SchedulerPanel() {
     if (!data) return;
     const map = Object.fromEntries(data.map((r: any) => [r.key, r.value]));
 
-    // Only update daily schedule state if not currently saving it
     if (!savingRef.current) {
       setSettings(prev => ({
-        // Preserve local edits for hourUtc and articlesPerCat while saving
         enabled:        map['schedule_enabled'] === 'true',
         hourUtc:        parseInt(map['schedule_hour_utc']         ?? String(prev.hourUtc), 10),
         articlesPerCat: parseInt(map['schedule_articles_per_cat'] ?? String(prev.articlesPerCat), 10),
@@ -103,7 +93,6 @@ export default function SchedulerPanel() {
       }));
     }
 
-    // Only update bulk state if not currently saving it
     if (!bulkSavingRef.current) {
       setBulk(prev => ({
         enabled: map['bulk_schedule_enabled'] === 'true',
@@ -117,14 +106,12 @@ export default function SchedulerPanel() {
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
-  // Poll every 30s while a run is active
   useEffect(() => {
     if (settings.status !== 'running') return;
     const interval = setInterval(loadSettings, 30_000);
     return () => clearInterval(interval);
   }, [settings.status, loadSettings]);
 
-  // Client-side bulk scheduler timer
   useEffect(() => {
     if (bulkTimerRef.current) clearInterval(bulkTimerRef.current);
     if (!bulk.enabled) return;
@@ -142,10 +129,7 @@ export default function SchedulerPanel() {
     return () => { if (bulkTimerRef.current) clearInterval(bulkTimerRef.current); };
   }, [bulk.enabled, bulk.hourUtc, bulk.lastRun]);
 
-  // ── Single-category actions ───────────────────────────────────────────────
-
-  // FIX: toggleEnabled now optimistically updates local state and marks
-  // savingRef so loadSettings won't revert it mid-flight.
+  // ── Daily schedule actions ────────────────────────────────────────────────
   const toggleEnabled = async () => {
     const newEnabled = !settings.enabled;
     savingRef.current = true;
@@ -154,34 +138,22 @@ export default function SchedulerPanel() {
       key: 'schedule_enabled', value: String(newEnabled), updated_at: new Date().toISOString(),
     });
     savingRef.current = false;
-    setSavedOk(true);
-    setTimeout(() => setSavedOk(false), 2000);
+    setSavedOk(true); setTimeout(() => setSavedOk(false), 2000);
   };
 
   const saveSettings = async () => {
-    setSaving(true);
-    savingRef.current = true;
-
-    // FIX: also persist and update nextRun based on the newly saved hourUtc
+    setSaving(true); savingRef.current = true;
     const nextRun = computeNextRun(settings.hourUtc);
-
     try {
       for (const row of [
         { key: 'schedule_enabled',         value: String(settings.enabled) },
         { key: 'schedule_hour_utc',         value: String(settings.hourUtc) },
         { key: 'schedule_articles_per_cat', value: String(settings.articlesPerCat) },
         { key: 'schedule_next_run',         value: nextRun },
-      ]) {
-        await supabase.from('settings').upsert({ ...row, updated_at: new Date().toISOString() });
-      }
-      // Update local nextRun to reflect what we just saved
+      ]) await supabase.from('settings').upsert({ ...row, updated_at: new Date().toISOString() });
       setSettings(s => ({ ...s, nextRun }));
-      setSavedOk(true);
-      setTimeout(() => setSavedOk(false), 2000);
-    } finally {
-      setSaving(false);
-      savingRef.current = false;
-    }
+      setSavedOk(true); setTimeout(() => setSavedOk(false), 2000);
+    } finally { setSaving(false); savingRef.current = false; }
   };
 
   const triggerNow = async () => {
@@ -201,19 +173,13 @@ export default function SchedulerPanel() {
       });
       const data = await res.json();
       if (!res.ok) { addLog(`❌ Failed: ${data.error ?? res.statusText}`, 'error'); return; }
-      addLog(
-        `✅ Done — ${data.total ?? 0} written, ${data.published ?? 0} published, ${data.drafts ?? 0} drafts`,
-        'success',
-      );
+      addLog(`✅ Done — ${data.total ?? 0} written, ${data.published ?? 0} published, ${data.drafts ?? 0} drafts`, 'success');
       data.details?.forEach((d: any) => {
         const type: TriggerLog['type'] =
           d.status.startsWith('published') ? 'success'
           : d.status.startsWith('error') || d.status.endsWith('_failed') ? 'error'
           : 'info';
-        addLog(
-          `  · [${d.subcategory}] ${d.title ? `"${d.title.substring(0, 50)}"` : d.status} — ${d.status}`,
-          type,
-        );
+        addLog(`  · [${d.subcategory}] ${d.title ? `"${d.title.substring(0, 50)}"` : d.status} — ${d.status}`, type);
       });
       await loadSettings();
     } catch (err: any) { addLog(`❌ Error: ${err.message}`, 'error'); }
@@ -221,7 +187,6 @@ export default function SchedulerPanel() {
   };
 
   // ── Bulk actions ──────────────────────────────────────────────────────────
-
   const toggleBulkEnabled = async () => {
     const newEnabled = !bulk.enabled;
     bulkSavingRef.current = true;
@@ -230,42 +195,30 @@ export default function SchedulerPanel() {
       key: 'bulk_schedule_enabled', value: String(newEnabled), updated_at: new Date().toISOString(),
     });
     bulkSavingRef.current = false;
-    setBulkSavedOk(true);
-    setTimeout(() => setBulkSavedOk(false), 2000);
+    setBulkSavedOk(true); setTimeout(() => setBulkSavedOk(false), 2000);
   };
 
   const saveBulkSettings = async () => {
-    setBulkSaving(true);
-    bulkSavingRef.current = true;
-
+    setBulkSaving(true); bulkSavingRef.current = true;
     const nextRun = computeNextRun(bulk.hourUtc);
-
     try {
       for (const row of [
         { key: 'bulk_schedule_enabled',  value: String(bulk.enabled) },
         { key: 'bulk_schedule_hour_utc', value: String(bulk.hourUtc) },
         { key: 'bulk_schedule_next_run', value: nextRun },
-      ]) {
-        await supabase.from('settings').upsert({ ...row, updated_at: new Date().toISOString() });
-      }
+      ]) await supabase.from('settings').upsert({ ...row, updated_at: new Date().toISOString() });
       setBulk(s => ({ ...s, nextRun }));
-      setBulkSavedOk(true);
-      setTimeout(() => setBulkSavedOk(false), 2000);
-    } finally {
-      setBulkSaving(false);
-      bulkSavingRef.current = false;
-    }
+      setBulkSavedOk(true); setTimeout(() => setBulkSavedOk(false), 2000);
+    } finally { setBulkSaving(false); bulkSavingRef.current = false; }
   };
 
   const runBulkGeneration = async (isAuto = false) => {
     if (bulkTriggering || bulk.status === 'running') return;
     setBulkTriggering(true); setBulkLogs([]);
     addBulkLog(`${isAuto ? '⏰ Auto-triggered' : '▶ Manually triggered'} — All 15 categories bulk generation`, 'info');
-
     await supabase.from('settings').upsert({ key: 'bulk_schedule_status',   value: 'running',               updated_at: new Date().toISOString() });
     await supabase.from('settings').upsert({ key: 'bulk_schedule_last_run', value: new Date().toISOString(), updated_at: new Date().toISOString() });
     setBulk(s => ({ ...s, status: 'running', lastRun: new Date().toISOString() }));
-
     try {
       addBulkLog(`📡 Calling /api/generate-articles (all 15 categories × 2 articles)...`, 'info');
       const res = await fetch('/api/generate-articles', {
@@ -277,18 +230,12 @@ export default function SchedulerPanel() {
         body: JSON.stringify({ articlesPerCategory: 2 }),
       });
       const data = await res.json();
-
       if (!res.ok) {
         addBulkLog(`❌ Failed: ${data.error ?? res.statusText}`, 'error');
         await supabase.from('settings').upsert({ key: 'bulk_schedule_status', value: 'error', updated_at: new Date().toISOString() });
-        setBulk(s => ({ ...s, status: 'error' }));
-        return;
+        setBulk(s => ({ ...s, status: 'error' })); return;
       }
-
-      addBulkLog(
-        `✅ Complete — ${data.total ?? 0} written · ${data.published ?? 0} published · ${data.drafts ?? 0} drafts · ${data.skipped ?? 0} skipped`,
-        'success',
-      );
+      addBulkLog(`✅ Complete — ${data.total ?? 0} written · ${data.published ?? 0} published · ${data.drafts ?? 0} drafts · ${data.skipped ?? 0} skipped`, 'success');
       data.details?.forEach((d: any) => {
         const cat = HISTORY_CATEGORIES[d.subcategory];
         const type: TriggerLog['type'] =
@@ -296,41 +243,37 @@ export default function SchedulerPanel() {
           : d.status === 'no_topics_in_pool' ? 'warn'
           : d.status.startsWith('error') || d.status.endsWith('_failed') ? 'error'
           : 'info';
-        addBulkLog(
-          `  ${cat?.emoji ?? '📄'} [${d.subcategory}] ${d.title ? `"${d.title.substring(0, 45)}..."` : d.status} — ${d.status}`,
-          type,
-        );
+        addBulkLog(`  ${cat?.emoji ?? '📄'} [${d.subcategory}] ${d.title ? `"${d.title.substring(0, 45)}..."` : d.status} — ${d.status}`, type);
       });
-
-      // FIX: use computeNextRun so the next run is always the correct wall-clock time
       const nextRun = computeNextRun(bulk.hourUtc);
       await supabase.from('settings').upsert({ key: 'bulk_schedule_status',   value: 'idle',    updated_at: new Date().toISOString() });
       await supabase.from('settings').upsert({ key: 'bulk_schedule_next_run', value: nextRun,   updated_at: new Date().toISOString() });
       setBulk(s => ({ ...s, status: 'idle', nextRun }));
-
     } catch (err: any) {
       addBulkLog(`❌ Error: ${err.message}`, 'error');
       await supabase.from('settings').upsert({ key: 'bulk_schedule_status', value: 'error', updated_at: new Date().toISOString() });
       setBulk(s => ({ ...s, status: 'error' }));
-    } finally {
-      setBulkTriggering(false);
-    }
+    } finally { setBulkTriggering(false); }
   };
 
   const statusColor = (s: string) =>
     s === 'running' ? 'text-blue-600' : s === 'error' ? 'text-red-600' : 'text-green-600';
   const logColor = (t: TriggerLog['type']) =>
-    t === 'success' ? 'text-green-400' : t === 'error' ? 'text-red-400' : t === 'warn' ? 'text-yellow-300' : 'text-gray-400';
+    t === 'success' ? 'text-green-400' : t === 'error' ? 'text-red-400' :
+    t === 'warn' ? 'text-yellow-300' : 'text-gray-400';
 
   return (
     <div className="mb-6 space-y-4">
 
-      {/* ── SECTION 1 — Single-category cron scheduler ─────────────────── */}
+      {/* ── SECTION 1 — Daily scheduler ──────────────────────────────────── */}
       <Card className="p-5 border-2 border-amber-200 bg-amber-50/20">
-        <h2 className="font-bold text-lg text-amber-900 mb-4 flex items-center gap-2">
+        <h2 className="font-bold text-lg text-amber-900 mb-1 flex items-center gap-2">
           ⏰ Daily Article Generation Schedule
           <span className="text-xs font-normal text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">1 random subcategory/day</span>
         </h2>
+        <p className="text-xs text-amber-600 mb-4">
+          Select the UTC hour — the IST time is shown next to it so you always know what you're setting.
+        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
           <div>
@@ -355,8 +298,13 @@ export default function SchedulerPanel() {
               onChange={e => setSettings(s => ({ ...s, hourUtc: parseInt(e.target.value, 10) }))}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-800"
             >
-              {HOUR_OPTIONS.map(o => <option key={o.utcHour} value={o.utcHour}>{o.label}</option>)}
+              {HOUR_OPTIONS.map(o => (
+                <option key={o.utcHour} value={o.utcHour}>{o.label}</option>
+              ))}
             </select>
+            <p className="text-[10px] text-amber-700 font-semibold mt-1 text-center">
+              Currently set: {HOUR_OPTIONS.find(o => o.utcHour === settings.hourUtc)?.label}
+            </p>
           </div>
 
           <div>
@@ -418,7 +366,7 @@ export default function SchedulerPanel() {
         )}
       </Card>
 
-      {/* ── SECTION 2 — Bulk all-15-categories scheduler ───────────────── */}
+      {/* ── SECTION 2 — Bulk scheduler ───────────────────────────────────── */}
       <Card className="p-5 border-2 border-purple-200 bg-purple-50/20">
         <h2 className="font-bold text-lg text-purple-900 mb-1 flex items-center gap-2">
           🗂️ Bulk Generation Schedule
@@ -449,7 +397,9 @@ export default function SchedulerPanel() {
               onChange={e => setBulk(s => ({ ...s, hourUtc: parseInt(e.target.value, 10) }))}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-800"
             >
-              {HOUR_OPTIONS.map(o => <option key={o.utcHour} value={o.utcHour}>{o.label}</option>)}
+              {HOUR_OPTIONS.map(o => (
+                <option key={o.utcHour} value={o.utcHour}>{o.label}</option>
+              ))}
             </select>
             <p className="text-[10px] text-gray-400 mt-1">💡 Set different from daily schedule to avoid conflicts</p>
           </div>

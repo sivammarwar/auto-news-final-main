@@ -2,7 +2,7 @@ name: Generate History Articles
 
 on:
   schedule:
-    - cron: "0 * * * *"   # Every hour — API route decides whether to run based on admin panel settings
+    - cron: "0 23 * * *"   # 4:30 AM IST daily (UTC 23:00 = IST 04:30 next day)
   workflow_dispatch:
     inputs:
       subcategory:
@@ -27,7 +27,6 @@ jobs:
           MANUAL="${{ github.event.inputs.manual || 'false' }}"
           SUBCAT="${{ github.event.inputs.subcategory }}"
 
-          # Build body
           if [ -n "$SUBCAT" ]; then
             BODY="{\"manual\":${MANUAL},\"subcategory\":\"${SUBCAT}\"}"
           else
@@ -40,7 +39,7 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
             -d "$BODY" \
-            --max-time 7200)
+            --max-time 7000)
 
           echo "HTTP Status: $RESPONSE"
           cat /tmp/response.json
@@ -50,10 +49,9 @@ jobs:
             exit 1
           fi
 
-          # Check if skipped (not the right hour)
           SKIPPED=$(cat /tmp/response.json | grep -o '"skipped":true' || true)
           if [ -n "$SKIPPED" ]; then
-            echo "⏭ Skipped — not the configured hour or schedule disabled"
+            echo "⏭ Skipped — schedule disabled"
           else
             echo "✅ Generation completed"
           fi
