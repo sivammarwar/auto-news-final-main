@@ -51,6 +51,11 @@ interface TopicPoolCount {
   total: number;
 }
 
+// ── topic_pool is not in generated Supabase types yet.
+// Cast supabase to any only for topic_pool queries.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any;
+
 // ════════════════════════════════════════════════════════════════════════════
 // AUTHOR PERSONA
 // ════════════════════════════════════════════════════════════════════════════
@@ -155,9 +160,8 @@ const AUTO_PUBLISH_SCORE     = 7.5;
 const TARGET_IMAGES          = 6;
 const MIN_IMAGES_TO_PUBLISH  = 2;
 const IMAGE_MIN_WIDTH        = 800;
-const LOW_TOPIC_WARNING      = 10; // warn when unused topics < this number
+const LOW_TOPIC_WARNING      = 10;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const nowTS  = () => new Date().toLocaleTimeString('en-IN', { hour12: false });
 const sleep  = (ms: number) => new Promise(r => setTimeout(r, ms));
 const clamp  = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -181,7 +185,6 @@ async function groqRequest(
 
   for (let attempt = 1; attempt <= maxTotal; attempt++) {
     if (pipelineSignal?.aborted) return null;
-
     const now = Date.now();
     for (let i = 0; i < keys.length; i++) {
       const idx = (idxRef.value + i) % keys.length;
@@ -189,7 +192,6 @@ async function groqRequest(
     }
     const activeKey = keys[idxRef.value];
     const keyLabel  = keys.length > 1 ? ` [key#${idxRef.value + 1}]` : '';
-
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), GROQ_TIMEOUT_MS);
     try {
@@ -199,7 +201,6 @@ async function groqRequest(
         body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, max_tokens: maxTokens, temperature: 0.75 }),
       });
       clearTimeout(t);
-
       if (res.status === 429) {
         const body = await res.json().catch(() => ({}));
         const errMsg: string = body?.error?.message ?? '';
@@ -241,7 +242,6 @@ function extractJSON<T>(raw: string | null): T | null {
   if (!raw) return null;
   let cleaned = raw.trim();
   cleaned = cleaned.replace(/^`{1,3}(?:json)?\s*/i, '').replace(/\s*`{1,3}\s*$/g, '').trim();
-
   function fixControlChars(s: string): string {
     const out: string[] = [];
     let inStr = false;
@@ -255,7 +255,6 @@ function extractJSON<T>(raw: string | null): T | null {
     }
     return out.join('');
   }
-
   const attempts = [cleaned, fixControlChars(cleaned)];
   const objM = cleaned.match(/\{[\s\S]*\}/);
   if (objM) attempts.push(objM[0], fixControlChars(objM[0]));
@@ -266,7 +265,7 @@ function extractJSON<T>(raw: string | null): T | null {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// IMAGE HANDLING (unchanged from original)
+// IMAGE HANDLING
 // ════════════════════════════════════════════════════════════════════════════
 const _usedPexelsIds = new Set<string>();
 const _usedWikiIds   = new Set<string>();
@@ -350,22 +349,18 @@ async function fetchAndSaveImages(pexelsKey: string, articleId: number, title: s
   const catConfig = HISTORY_CATEGORIES[subcategory];
   const allPhotos: HybridPhoto[] = [];
   const seen = new Set<string>();
-
   const add = (photos: HybridPhoto[]) => {
     photos.forEach(p => {
       if (!seen.has(p.id)) {
-        seen.add(p.id);
-        allPhotos.push(p);
+        seen.add(p.id); allPhotos.push(p);
         if (p.source === 'pexels')    _usedPexelsIds.add(p.id);
         if (p.source === 'wikimedia') _usedWikiIds.add(p.id);
       }
     });
   };
-
   for (const q of imageQueries.slice(0, 3)) {
     if (allPhotos.length >= TARGET_IMAGES) break;
-    add(await fetchPexels(pexelsKey, q, 2));
-    await sleep(300);
+    add(await fetchPexels(pexelsKey, q, 2)); await sleep(300);
   }
   if (allPhotos.length < TARGET_IMAGES) {
     add(await fetchWikimedia(imageQueries[0] ?? catConfig?.imageQueries[0] ?? 'ancient history ruins', 3));
@@ -374,11 +369,9 @@ async function fetchAndSaveImages(pexelsKey: string, articleId: number, title: s
   if (allPhotos.length < TARGET_IMAGES && catConfig) {
     for (const q of catConfig.imageQueries) {
       if (allPhotos.length >= TARGET_IMAGES) break;
-      add(await fetchPexels(pexelsKey, q, 2));
-      await sleep(300);
+      add(await fetchPexels(pexelsKey, q, 2)); await sleep(300);
     }
   }
-
   if (allPhotos.length === 0) { log(`    ✗ No images found for "${title}"`, 'error'); return 0; }
   const toSave = allPhotos.slice(0, TARGET_IMAGES);
   const imageRows = toSave.map((photo, i) => ({
@@ -390,7 +383,6 @@ async function fetchAndSaveImages(pexelsKey: string, articleId: number, title: s
     wiki_license: photo.wikiLicense ?? null,
     wiki_license_url: photo.wikiLicenseUrl ?? null,
   }));
-
   const { error } = await supabase.from('article_images').insert(imageRows);
   if (error) { log(`    ✗ Image save error: ${error.message}`, 'error'); return 0; }
   await supabase.from('articles').update({ image_url: imageRows[0].image_url }).eq('id', articleId);
@@ -421,8 +413,6 @@ export default function AdminPanel() {
   const [selectMode, setSelectMode]           = useState(false);
   const [selectedIds, setSelectedIds]         = useState<Set<number>>(new Set());
   const [deleting, setDeleting]               = useState(false);
-
-  // ── Topic Pool state ──────────────────────────────────────────────────────
   const [topicPoolCounts, setTopicPoolCounts] = useState<TopicPoolCount[]>([]);
   const [topicInputCat, setTopicInputCat]     = useState<string>('ancient-civilizations');
   const [topicInputText, setTopicInputText]   = useState<string>('');
@@ -445,22 +435,17 @@ export default function AdminPanel() {
     setGenLogs(prev => [...prev.slice(-400), { id: Date.now() + Math.random(), message, type, ts: nowTS() }]);
   }, []);
 
-  // ── Fetch topic pool counts ───────────────────────────────────────────────
+  // ── Uses db (any cast) because topic_pool not in Supabase types ──────────
   const fetchTopicPoolCounts = async () => {
-    const { data, error: e } = await supabase
-      .from('topic_pool')
-      .select('subcategory, is_used');
+    const { data, error: e } = await db.from('topic_pool').select('subcategory, is_used');
     if (e || !data) return;
-
     const counts: Record<string, { unused: number; total: number }> = {};
     for (const row of data) {
       if (!counts[row.subcategory]) counts[row.subcategory] = { unused: 0, total: 0 };
       counts[row.subcategory].total++;
       if (!row.is_used) counts[row.subcategory].unused++;
     }
-    setTopicPoolCounts(
-      Object.entries(counts).map(([subcategory, v]) => ({ subcategory, ...v }))
-    );
+    setTopicPoolCounts(Object.entries(counts).map(([subcategory, v]) => ({ subcategory, ...v })));
   };
 
   const fetchArticles = async () => {
@@ -477,36 +462,17 @@ export default function AdminPanel() {
     finally { setLoading(false); }
   };
 
-  // ════════════════════════════════════════════════════════════════════════
-  // TOPIC POOL — save topics entered manually
-  // ════════════════════════════════════════════════════════════════════════
+  // ── Uses db (any cast) because topic_pool not in Supabase types ──────────
   const handleSaveTopics = async () => {
-    const lines = topicInputText
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 10); // ignore blank / very short lines
-
-    if (lines.length === 0) {
-      setTopicSaveMsg('⚠️ No valid topics found. Enter one topic per line.');
-      return;
-    }
-
-    setSavingTopics(true);
-    setTopicSaveMsg(null);
-
-    // Build rows — topic_key is just a slug of the topic text (for UNIQUE constraint)
+    const lines = topicInputText.split('\n').map(l => l.trim()).filter(l => l.length > 10);
+    if (lines.length === 0) { setTopicSaveMsg('⚠️ No valid topics found. Enter one topic per line.'); return; }
+    setSavingTopics(true); setTopicSaveMsg(null);
     const rows = lines.map(topic => ({
-      subcategory: topicInputCat,
-      topic:       topic,
-      topic_key:   topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120),
-      is_used:     false,
+      subcategory: topicInputCat, topic,
+      topic_key: topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120),
+      is_used: false,
     }));
-
-    // upsert with ignoreDuplicates — safe to paste same topics twice
-    const { error: e } = await supabase
-      .from('topic_pool')
-      .upsert(rows, { onConflict: 'subcategory,topic_key', ignoreDuplicates: true });
-
+    const { error: e } = await db.from('topic_pool').upsert(rows, { onConflict: 'subcategory,topic_key', ignoreDuplicates: true });
     if (e) {
       setTopicSaveMsg(`❌ Save failed: ${e.message}`);
     } else {
@@ -518,23 +484,19 @@ export default function AdminPanel() {
     setTimeout(() => setTopicSaveMsg(null), 4000);
   };
 
-  // ════════════════════════════════════════════════════════════════════════
-  // PICK TOPICS FROM DB (replaces hardcoded topicPool)
-  // ════════════════════════════════════════════════════════════════════════
+  // ── Uses db (any cast) because topic_pool not in Supabase types ──────────
   const pickTopicsFromDB = async (subcategory: string, count: number): Promise<{ id: number; topic: string }[]> => {
-    const { data, error: e } = await supabase
-      .from('topic_pool')
-      .select('id, topic')
-      .eq('subcategory', subcategory)
-      .eq('is_used', false)
-      .order('created_at', { ascending: true }) // FIFO — oldest topics first
-      .limit(count);
+    const { data, error: e } = await db
+      .from('topic_pool').select('id, topic')
+      .eq('subcategory', subcategory).eq('is_used', false)
+      .order('created_at', { ascending: true }).limit(count);
     if (e || !data) return [];
     return data as { id: number; topic: string }[];
   };
 
+  // ── Uses db (any cast) because topic_pool not in Supabase types ──────────
   const markTopicUsed = async (id: number): Promise<void> => {
-    await supabase.from('topic_pool').update({ is_used: true }).eq('id', id);
+    await db.from('topic_pool').update({ is_used: true }).eq('id', id);
   };
 
   // ════════════════════════════════════════════════════════════════════════
@@ -547,15 +509,12 @@ export default function AdminPanel() {
       process.env.NEXT_PUBLIC_GROQ_API_KEY_3,
     ].filter(Boolean) as string[];
     const pexelsKey = process.env.NEXT_PUBLIC_PEXELS_API_KEY as string | undefined;
-
     if (groqKeys.length === 0) { setError('Missing NEXT_PUBLIC_GROQ_API_KEY'); return; }
     if (!pexelsKey)            { setError('Missing NEXT_PUBLIC_PEXELS_API_KEY'); return; }
 
-    setGenerating(true);
-    setError(null); setSuccess(null);
-    setGenLogs([]); setGenDone(0);
-    setBatchInfo(''); stopRef.current = false;
-    abortRef.current = new AbortController();
+    setGenerating(true); setError(null); setSuccess(null);
+    setGenLogs([]); setGenDone(0); setBatchInfo('');
+    stopRef.current = false; abortRef.current = new AbortController();
     clearImageCache();
 
     const log = addLog;
@@ -573,27 +532,19 @@ export default function AdminPanel() {
     try {
       for (let ci = 0; ci < categoryKeys.length; ci++) {
         if (stopRef.current) { log('⛔ Stopped.', 'error'); break; }
-
         const subcatKey = categoryKeys[ci];
         const catConfig = HISTORY_CATEGORIES[subcatKey];
-
         log(`\n━━━ [${ci + 1}/${categoryKeys.length}] ${catConfig.emoji} ${catConfig.label.toUpperCase()} ━━━`, 'info');
 
-        // ── Pick unused topics from DB ───────────────────────────────────
         const pickedTopics = await pickTopicsFromDB(subcatKey, ARTICLES_PER_CATEGORY);
-
         if (pickedTopics.length === 0) {
           log(`  ⚠️  No unused topics in pool for ${catConfig.label} — skipping. Add topics in the Topic Pool section.`, 'warn');
-          setGenDone(d => d + ARTICLES_PER_CATEGORY);
-          globalIdx += ARTICLES_PER_CATEGORY;
-          continue;
+          setGenDone(d => d + ARTICLES_PER_CATEGORY); globalIdx += ARTICLES_PER_CATEGORY; continue;
         }
-
         log(`  📋 Picked ${pickedTopics.length} topic(s) from pool`, 'info');
 
         for (let ti = 0; ti < pickedTopics.length; ti++) {
           if (stopRef.current) { log('⛔ Stopped.', 'error'); break; }
-
           globalIdx++;
           const { id: topicId, topic } = pickedTopics[ti];
 
@@ -607,76 +558,34 @@ export default function AdminPanel() {
           log(`\n  ✍️  [${globalIdx}/${totalArticles}] "${topic}"`, 'progress');
           setBatchInfo(`[${globalIdx}/${totalArticles}] Writing: ${topic.substring(0, 50)}...`);
 
-          // ── WRITE PART 1 ──────────────────────────────────────────────
           await sleep(2000);
           const part1Raw = await groqRequest(
             groqKeys[keyIndexRef.value],
-            [
-              {
-                role: 'system',
-                content:
-                  `You are ${AUTHOR.name}, ${AUTHOR.tagline}.\n\n${AUTHOR.bio}\n\n` +
-                  `Write the FIRST HALF of a gripping history article.\n\n` +
-                  `TOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n` +
-                  `Structure with ## headings and **bold** key facts:\n\n` +
-                  `## [Most surprising fact about this topic as a statement]\n` +
-                  `(2-3 sentences) Open with the most surprising, counterintuitive, or little-known fact. **Bold** the key detail.\n\n` +
-                  `## What Everyone Knows\n` +
-                  `(100-150 words) The popular understanding.\n\n` +
-                  `## What History Actually Shows\n` +
-                  `(300-400 words) The deeper, more accurate version. **Bold** every key fact.\n\n` +
-                  `RULES: Paragraphs separated by \\n\\n. No bullet points. Original voice only. Return article text only.`,
-              },
-              { role: 'user', content: `Write Part 1 for the ${catConfig.label} article: "${topic}"` },
-            ],
+            [{ role: 'system', content: `You are ${AUTHOR.name}, ${AUTHOR.tagline}.\n\n${AUTHOR.bio}\n\nWrite the FIRST HALF of a gripping history article.\n\nTOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n## [Most surprising fact about this topic as a statement]\n(2-3 sentences) Open with the most surprising, counterintuitive, or little-known fact. **Bold** the key detail.\n\n## What Everyone Knows\n(100-150 words) The popular understanding.\n\n## What History Actually Shows\n(300-400 words) The deeper, more accurate version. **Bold** every key fact.\n\nRULES: Paragraphs separated by \\n\\n. No bullet points. Original voice only. Return article text only.` },
+             { role: 'user', content: `Write Part 1 for the ${catConfig.label} article: "${topic}"` }],
             1500, `${subcatKey}:p1:${ti + 1}`, log, groqKeys, keyExhausted, keyIndexRef, abortRef.current?.signal
           );
 
           if (!part1Raw || part1Raw.length < 200) {
             log(`    ✗ Part 1 failed — topic NOT marked as used`, 'error');
-            setGenDone(d => d + 1);
-            await sleep(INTER_ARTICLE_PAUSE_MS); continue;
+            setGenDone(d => d + 1); await sleep(INTER_ARTICLE_PAUSE_MS); continue;
           }
 
-          // ── WRITE PART 2 ──────────────────────────────────────────────
           await sleep(4000);
           const part2Raw = await groqRequest(
             groqKeys[keyIndexRef.value],
-            [
-              {
-                role: 'system',
-                content:
-                  `You are ${AUTHOR.name}, ${AUTHOR.tagline}.\n\n` +
-                  `Write the SECOND HALF of the history article about: "${topic}"\n\n` +
-                  `## The Part That Got Buried\n` +
-                  `(200-250 words) What was deliberately overlooked or suppressed.\n\n` +
-                  `## The Ripple Effect\n` +
-                  `(150-200 words) How this still shapes the world today.\n\n` +
-                  `## The Line That Says It All\n` +
-                  `(1 sharp sentence) The most memorable takeaway.\n\n` +
-                  `RULES: Same as Part 1. Return article text only.`,
-              },
-              { role: 'user', content: `Write Part 2 for: "${topic}"` },
-            ],
+            [{ role: 'system', content: `You are ${AUTHOR.name}, ${AUTHOR.tagline}.\n\nWrite the SECOND HALF of the history article about: "${topic}"\n\n## The Part That Got Buried\n(200-250 words) What was deliberately overlooked or suppressed.\n\n## The Ripple Effect\n(150-200 words) How this still shapes the world today.\n\n## The Line That Says It All\n(1 sharp sentence) The most memorable takeaway.\n\nRULES: Same as Part 1. Return article text only.` },
+             { role: 'user', content: `Write Part 2 for: "${topic}"` }],
             1200, `${subcatKey}:p2:${ti + 1}`, log, groqKeys, keyExhausted, keyIndexRef, abortRef.current?.signal
           );
 
           const fullContent = [part1Raw.trim(), (part2Raw ?? '').trim()].filter(Boolean).join('\n\n');
 
-          // ── META ──────────────────────────────────────────────────────
           await sleep(3000);
           const metaRaw = await groqRequest(
             groqKeys[keyIndexRef.value],
-            [
-              { role: 'system', content: 'Return ONLY raw valid JSON — no markdown, no backticks. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
-              {
-                role: 'user',
-                content:
-                  `Generate metadata for history article about: "${topic}"\n\n` +
-                  `Preview: ${fullContent.substring(0, 400)}\n\n` +
-                  `Return:\n- title: 10-18 word compelling headline\n- summary: 3 punchy teaser sentences\n- score: 0-10 quality rating\n- image_queries: 6 specific Pexels search strings\nRaw JSON only.`,
-              },
-            ],
+            [{ role: 'system', content: 'Return ONLY raw valid JSON — no markdown, no backticks. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
+             { role: 'user', content: `Generate metadata for history article about: "${topic}"\n\nPreview: ${fullContent.substring(0, 400)}\n\nReturn:\n- title: 10-18 word compelling headline\n- summary: 3 punchy teaser sentences\n- score: 0-10 quality rating\n- image_queries: 6 specific Pexels search strings\nRaw JSON only.` }],
             500, `${subcatKey}:meta:${ti + 1}`, log, groqKeys, keyExhausted, keyIndexRef, abortRef.current?.signal
           );
 
@@ -689,23 +598,14 @@ export default function AdminPanel() {
 
           if (stopRef.current) break;
 
-          // ── SAVE TO DB ─────────────────────────────────────────────────
           const { data: saved, error: saveErr } = await supabase.from('articles').insert({
-            title:          title.substring(0, 255),
-            source_url:     null,
-            source_name:    AUTHOR.name,
-            summary:        summary.substring(0, 500),
-            raw_content:    fullContent,
-            category:       'history',
-            subcategory:    subcatKey,
-            score,
-            era:            catConfig.era,
-            difficulty:     'both',
+            title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
+            summary: summary.substring(0, 500), raw_content: fullContent,
+            category: 'history', subcategory: subcatKey, score,
+            era: catConfig.era, difficulty: 'both',
             published_date: new Date().toISOString(),
-            is_draft:       true,
-            is_published:   false,
-            image_url:      null,
-            admin_notes:    `Topic: "${topic}" | Subcategory: ${catConfig.label}`,
+            is_draft: true, is_published: false, image_url: null,
+            admin_notes: `Topic: "${topic}" | Subcategory: ${catConfig.label}`,
           }).select('id').single();
 
           if (saveErr) {
@@ -717,26 +617,20 @@ export default function AdminPanel() {
           const articleId = (saved as any).id;
           log(`    ✅ Article #${articleId} saved | score ${score.toFixed(1)}`, 'success');
 
-          // ── Mark topic as used ONLY after successful article save ──────
           await markTopicUsed(topicId);
           log(`    🔒 Topic marked as used in pool`, 'info');
 
-          // ── IMAGES ────────────────────────────────────────────────────
           const imageCount = await fetchAndSaveImages(pexelsKey, articleId, title, subcatKey, imgQ, log);
 
-          // ── AUTO-PUBLISH ──────────────────────────────────────────────
-          const goodScore  = score >= AUTO_PUBLISH_SCORE;
-          const hasImages  = imageCount >= MIN_IMAGES_TO_PUBLISH;
+          const goodScore = score >= AUTO_PUBLISH_SCORE;
+          const hasImages = imageCount >= MIN_IMAGES_TO_PUBLISH;
           if (goodScore && hasImages) {
             const { data: verify } = await supabase.from('articles').select('raw_content, image_url').eq('id', articleId).single();
             if ((verify as any)?.raw_content?.length > 200 && (verify as any)?.image_url) {
               const { error: pubErr } = await supabase.from('articles')
                 .update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() })
                 .eq('id', articleId);
-              if (!pubErr) {
-                autoPublished++;
-                log(`    🚀 AUTO-PUBLISHED #${articleId} (${score.toFixed(1)}⭐, ${imageCount} images)`, 'success');
-              }
+              if (!pubErr) { autoPublished++; log(`    🚀 AUTO-PUBLISHED #${articleId} (${score.toFixed(1)}⭐, ${imageCount} images)`, 'success'); }
             }
           } else {
             const reason = !hasImages ? `only ${imageCount} images` : `score ${score.toFixed(1)} < ${AUTO_PUBLISH_SCORE}`;
@@ -747,7 +641,6 @@ export default function AdminPanel() {
           setGenDone(d => d + 1);
           if (ti < pickedTopics.length - 1) await sleep(INTER_ARTICLE_PAUSE_MS);
         }
-
         if (ci < categoryKeys.length - 1 && !stopRef.current) await sleep(2000);
       }
 
@@ -756,15 +649,13 @@ export default function AdminPanel() {
       log(`   🚀 Auto-published:   ${autoPublished}`, 'success');
       log(`   📋 Left in drafts:   ${grandTotal - autoPublished}`, 'info');
       setSuccess(`✅ Done! ${grandTotal} articles written · ${autoPublished} auto-published · ${grandTotal - autoPublished} in drafts`);
-      fetchArticles();
-      fetchTopicPoolCounts(); // refresh counts after run
+      fetchArticles(); fetchTopicPoolCounts();
 
     } catch (e: any) {
       log(`\n❌ Fatal: ${e.message}`, 'error');
       setError('Generation failed: ' + e.message);
     } finally {
-      setGenerating(false); abortRef.current = null;
-      setBatchInfo('');
+      setGenerating(false); abortRef.current = null; setBatchInfo('');
     }
   };
 
@@ -775,11 +666,9 @@ export default function AdminPanel() {
     addLog('⛔ Pipeline stopped.', 'error');
   };
 
-  // ── Article actions (unchanged) ───────────────────────────────────────────
   const selectArticle = async (article: Article) => {
     if (selectMode) return;
-    setSelectedArticle(article);
-    setAdminNotes(article.admin_notes ?? '');
+    setSelectedArticle(article); setAdminNotes(article.admin_notes ?? '');
     setError(null); setSuccess(null);
     try {
       const { data, error: e } = await supabase.from('article_images').select('*').eq('article_id', article.id).order('position');
@@ -803,8 +692,7 @@ export default function AdminPanel() {
       if (selectedArticle && selectedIds.has(selectedArticle.id)) { setSelectedArticle(null); setImages([]); }
       setSelectedIds(new Set()); setSelectMode(false);
       setSuccess(`✅ Deleted ${ids.length} article(s).`);
-      await fetchArticles();
-      setTimeout(() => setSuccess(null), 3000);
+      await fetchArticles(); setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) { setError(e.message); }
     finally { setDeleting(false); }
   };
@@ -903,14 +791,11 @@ export default function AdminPanel() {
     t === 'success' ? 'text-green-400' : t === 'error' ? 'text-red-400' :
     t === 'warn' ? 'text-yellow-300' : t === 'progress' ? 'text-blue-300' : 'text-gray-400';
   const pct = genTotal > 0 ? Math.round((genDone / genTotal) * 100) : 0;
-
   const getImageCredit = (img: ArticleImage): string | null => {
     if (img.image_source === 'pexels' && img.photographer) return `Photo by ${img.photographer} on Pexels`;
     if (img.image_source === 'wikimedia' && img.wiki_attribution) return `${img.wiki_attribution}${img.wiki_license ? ` · ${img.wiki_license}` : ''} · Wikimedia Commons`;
     return null;
   };
-
-  // Low topic warnings
   const lowTopicCategories = topicPoolCounts.filter(c => c.unused < LOW_TOPIC_WARNING);
 
   return (
@@ -924,7 +809,6 @@ export default function AdminPanel() {
 
       <SchedulerPanel />
 
-      {/* ── LOW TOPIC WARNINGS ──────────────────────────────────────────────── */}
       {lowTopicCategories.length > 0 && (
         <div className="mb-4 p-4 bg-orange-50 border border-orange-300 rounded-lg">
           <p className="font-bold text-orange-800 text-sm mb-1">⚠️ Low topic pool — add more topics soon:</p>
@@ -941,12 +825,8 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ── TOPIC POOL SECTION ──────────────────────────────────────────────── */}
       <Card className="mb-6 overflow-hidden border-2 border-blue-200">
-        <div
-          className="p-4 bg-blue-50 flex items-center justify-between cursor-pointer"
-          onClick={() => setShowTopicPool(s => !s)}
-        >
+        <div className="p-4 bg-blue-50 flex items-center justify-between cursor-pointer" onClick={() => setShowTopicPool(s => !s)}>
           <div className="flex items-center gap-2">
             <BookOpen size={20} className="text-blue-600" />
             <h2 className="font-bold text-blue-900 text-lg">Topic Pool Manager</h2>
@@ -959,7 +839,6 @@ export default function AdminPanel() {
 
         {showTopicPool && (
           <div className="p-5 border-t border-blue-100">
-            {/* ── Pool counts per category ──────────────────────────────── */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-6">
               {Object.entries(HISTORY_CATEGORIES).map(([key, cat]) => {
                 const counts = topicPoolCounts.find(c => c.subcategory === key);
@@ -967,71 +846,48 @@ export default function AdminPanel() {
                 const total  = counts?.total  ?? 0;
                 const isLow  = unused < LOW_TOPIC_WARNING;
                 return (
-                  <div
-                    key={key}
-                    onClick={() => { setTopicInputCat(key); }}
+                  <div key={key} onClick={() => setTopicInputCat(key)}
                     className={`p-2 rounded-lg border text-center cursor-pointer transition ${
-                      topicInputCat === key
-                        ? 'border-blue-500 bg-blue-50'
-                        : isLow
-                        ? 'border-orange-300 bg-orange-50'
-                        : 'border-gray-200 bg-white hover:border-blue-300'
+                      topicInputCat === key ? 'border-blue-500 bg-blue-50'
+                      : isLow ? 'border-orange-300 bg-orange-50'
+                      : 'border-gray-200 bg-white hover:border-blue-300'
                     }`}
                   >
                     <p className="text-lg">{cat.emoji}</p>
                     <p className="text-xs font-medium text-gray-700 leading-tight mt-0.5">{cat.label}</p>
-                    <p className={`text-xs font-bold mt-1 ${isLow ? 'text-orange-600' : 'text-green-600'}`}>
-                      {unused} unused
-                    </p>
+                    <p className={`text-xs font-bold mt-1 ${isLow ? 'text-orange-600' : 'text-green-600'}`}>{unused} unused</p>
                     <p className="text-xs text-gray-400">{total} total</p>
                   </div>
                 );
               })}
             </div>
 
-            {/* ── Topic input ───────────────────────────────────────────── */}
             <div className="bg-white border border-blue-200 rounded-xl p-4">
               <div className="flex items-center gap-3 mb-3">
                 <div className="flex-1">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Adding topics to:
-                  </label>
-                  <select
-                    value={topicInputCat}
-                    onChange={e => setTopicInputCat(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                  >
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Adding topics to:</label>
+                  <select value={topicInputCat} onChange={e => setTopicInputCat(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     {Object.entries(HISTORY_CATEGORIES).map(([key, cat]) => (
                       <option key={key} value={key}>{cat.emoji} {cat.label}</option>
                     ))}
                   </select>
                 </div>
               </div>
-
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Enter topics — one per line:
-              </label>
-              <Textarea
-                value={topicInputText}
-                onChange={e => setTopicInputText(e.target.value)}
-                placeholder={`Example:\nthe engineering genius behind the Egyptian pyramids that modern architects still cannot replicate\nthe real reason Rome fell — not barbarians, but something far more internal and surprising\nthe hidden female pharaohs of Egypt that male successors tried to erase from history`}
-                className="min-h-[160px] text-sm font-mono mb-3 border-gray-300"
-              />
-
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Enter topics — one per line:</label>
+              <Textarea value={topicInputText} onChange={e => setTopicInputText(e.target.value)}
+                placeholder={`Example:\nthe engineering genius behind the Egyptian pyramids that modern architects still cannot replicate\nthe real reason Rome fell — not barbarians, but something far more internal and surprising`}
+                className="min-h-[160px] text-sm font-mono mb-3 border-gray-300" />
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-400">
                   {topicInputText.split('\n').filter(l => l.trim().length > 10).length} valid topics detected
                 </p>
-                <Button
-                  onClick={handleSaveTopics}
-                  disabled={savingTopics || topicInputText.trim().length === 0}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6"
-                >
+                <Button onClick={handleSaveTopics} disabled={savingTopics || topicInputText.trim().length === 0}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6">
                   <Plus size={16} className="mr-1.5" />
                   {savingTopics ? 'Saving...' : 'Save Topics to Pool'}
                 </Button>
               </div>
-
               {topicSaveMsg && (
                 <p className={`mt-2 text-sm font-medium ${topicSaveMsg.startsWith('✅') ? 'text-green-600' : 'text-orange-600'}`}>
                   {topicSaveMsg}
@@ -1042,7 +898,6 @@ export default function AdminPanel() {
         )}
       </Card>
 
-      {/* ── GENERATE CARD ─────────────────────────────────────────────────── */}
       <Card className="mb-6 overflow-hidden border-2 border-amber-200">
         <div className="p-5 bg-amber-50">
           <div className="flex flex-col md:flex-row md:items-start gap-4">
@@ -1079,7 +934,6 @@ export default function AdminPanel() {
             </div>
           </div>
         </div>
-
         {genLogs.length > 0 && (
           <div ref={logContainerRef} className="bg-gray-950 p-3 max-h-64 overflow-y-auto font-mono text-xs leading-[1.6] border-t border-gray-800">
             {genLogs.map(l => (
@@ -1091,7 +945,6 @@ export default function AdminPanel() {
         )}
       </Card>
 
-      {/* Messages */}
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-lg text-red-800">
           <div className="flex justify-between gap-4">
@@ -1108,9 +961,7 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ── MAIN GRID ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Article list */}
         <div className="lg:col-span-1">
           <Card className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -1125,7 +976,6 @@ export default function AdminPanel() {
                 </button>
               </div>
             </div>
-
             <div className="flex gap-1 mb-2">
               {(['draft', 'published', 'all'] as const).map(f => (
                 <button key={f} onClick={() => setFilter(f)}
@@ -1134,7 +984,6 @@ export default function AdminPanel() {
                 </button>
               ))}
             </div>
-
             <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
               className="w-full mb-3 text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700">
               <option value="all">All categories</option>
@@ -1142,14 +991,12 @@ export default function AdminPanel() {
                 <option key={key} value={key}>{c.emoji} {c.label}</option>
               ))}
             </select>
-
             {selectMode && selectedIds.size > 0 && (
               <button onClick={deleteSelected} disabled={deleting}
                 className="w-full mb-3 flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700">
                 <Trash2 size={14} /> {deleting ? 'Deleting...' : `Delete (${selectedIds.size})`}
               </button>
             )}
-
             <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
               {!loading && articles.length === 0 && (
                 <div className="text-center text-gray-400 py-10">
@@ -1188,7 +1035,6 @@ export default function AdminPanel() {
           </Card>
         </div>
 
-        {/* Detail panel */}
         <div className="lg:col-span-2">
           {!selectedArticle || selectMode ? (
             <Card className="flex flex-col items-center justify-center min-h-[400px] text-gray-400">
@@ -1207,17 +1053,14 @@ export default function AdminPanel() {
                     {selectedArticle.is_published && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">🟢 Live</span>}
                   </div>
                 </div>
-
                 {selectedArticle.subcategory && HISTORY_CATEGORIES[selectedArticle.subcategory] && (
                   <p className="text-xs text-amber-700 mb-2 font-medium">
                     {HISTORY_CATEGORIES[selectedArticle.subcategory].emoji} {HISTORY_CATEGORIES[selectedArticle.subcategory].label}
                     {selectedArticle.era && <span className="ml-2 text-gray-400">· {selectedArticle.era}</span>}
                   </p>
                 )}
-
                 <p className="text-xs text-gray-400 mb-3">✍️ By <span className="text-amber-700">{selectedArticle.source_name}</span></p>
                 <p className="text-sm text-gray-600 mb-3 leading-relaxed">{selectedArticle.summary}</p>
-
                 {selectedArticle.raw_content && (
                   <details className="mb-4">
                     <summary className="text-sm text-amber-700 cursor-pointer font-medium hover:underline">📄 View full article</summary>
@@ -1226,7 +1069,6 @@ export default function AdminPanel() {
                     </div>
                   </details>
                 )}
-
                 <div className="grid grid-cols-3 gap-3 mb-5 text-center text-sm">
                   <div className="bg-gray-50 rounded-lg p-3">
                     <p className="text-gray-400 text-xs mb-1">Images</p>
@@ -1243,7 +1085,6 @@ export default function AdminPanel() {
                     </p>
                   </div>
                 </div>
-
                 {!selectedArticle.is_published && (
                   <Button onClick={publishArticle} disabled={images.length < MIN_IMAGES_TO_PUBLISH}
                     className={`w-full font-bold py-3 text-base text-white ${images.length >= MIN_IMAGES_TO_PUBLISH ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}>
@@ -1275,7 +1116,6 @@ export default function AdminPanel() {
                     {refetchingImages ? 'Fetching...' : 'Re-fetch'}
                   </Button>
                 </div>
-
                 {images.length < TARGET_IMAGES && (
                   <label className="block mb-4 cursor-pointer">
                     <div className={`border-2 border-dashed rounded-xl p-4 text-center transition ${uploading ? 'border-amber-300 bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'}`}>
@@ -1286,7 +1126,6 @@ export default function AdminPanel() {
                     <input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} className="hidden" />
                   </label>
                 )}
-
                 {images.length > 0 ? (
                   <div className="grid grid-cols-2 gap-3">
                     {images.map((img, idx) => {
