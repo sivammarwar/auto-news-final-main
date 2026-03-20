@@ -25,7 +25,7 @@ interface Article {
 }
 interface ArticleImage {
   id: number;
-  article_id?: number;
+  article_id?: number | null;
   image_url: string;
   alt_text?: string | null;
   photographer?: string | null;
@@ -35,9 +35,11 @@ interface ArticleImage {
   wiki_license?: string | null;
   wiki_license_url?: string | null;
   position: number;
-  width: number;
+  width: number | null;
   height?: number | null;
   size_kb?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 interface GenLog {
   id: number;
@@ -54,7 +56,8 @@ interface TopicPoolCount {
 // ── topic_pool is not in generated Supabase types yet.
 // Cast supabase to any only for topic_pool queries.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any;
+// topic_pool is now in the generated Supabase types — no cast needed.
+const db = supabase;
 
 // ════════════════════════════════════════════════════════════════════════════
 // AUTHOR PERSONA

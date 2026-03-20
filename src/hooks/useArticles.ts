@@ -8,7 +8,6 @@ const FIELDS = [
   'published_date', 'is_published', 'is_draft', 'admin_notes', 'era', 'difficulty',
 ].join(', ');
 
-// All valid subcategory slugs
 const SUBCATEGORY_SLUGS = new Set([
   'ancient-civilizations', 'medieval-feudal', 'age-of-exploration',
   'revolutions-politics', 'world-wars-conflicts', 'colonial-imperial',
@@ -17,7 +16,6 @@ const SUBCATEGORY_SLUGS = new Set([
   'regional-history', 'archaeology-mysteries', 'famous-figures',
 ]);
 
-// Determines whether a slug is a subcategory or a top-level category
 function isSubcategory(slug: string): boolean {
   return SUBCATEGORY_SLUGS.has(slug);
 }
@@ -43,7 +41,7 @@ export function useArticles(slug?: string, limit = 50) {
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data as unknown as Article[]) ?? [];  // ← fix: added 'unknown' intermediate cast
+      return (data as unknown as Article[]) ?? [];
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -62,7 +60,7 @@ export function useArticle(id: string) {
 
       if (error?.code === 'PGRST116') return null;
       if (error) throw error;
-      return data as unknown as Article;  // ← fix: added 'unknown' intermediate cast
+      return data as unknown as Article;
     },
     enabled: !!id,
     staleTime: 10 * 60 * 1000,
@@ -92,7 +90,6 @@ export function useRelatedArticles(article: Article | null, limit = 4) {
       const { data, error } = await query;
       if (error) throw error;
 
-      // If subcategory match returned too few, backfill from the same category
       if (article.subcategory && (data?.length ?? 0) < limit) {
         const needed = limit - (data?.length ?? 0);
         const existingIds = [article.id, ...((data as unknown as Article[]) ?? []).map((a: Article) => a.id)];
@@ -104,10 +101,10 @@ export function useRelatedArticles(article: Article | null, limit = 4) {
           .not('id', 'in', `(${existingIds.join(',')})`)
           .order('score', { ascending: false })
           .limit(needed);
-        return ([...(data ?? []), ...(extra ?? [])] as unknown as Article[]);  // ← fix: added 'unknown' intermediate cast
+        return ([...(data ?? []), ...(extra ?? [])] as unknown as Article[]);
       }
 
-      return (data as unknown as Article[]) ?? [];  // ← fix: added 'unknown' intermediate cast
+      return (data as unknown as Article[]) ?? [];
     },
     enabled: !!article,
     staleTime: 10 * 60 * 1000,

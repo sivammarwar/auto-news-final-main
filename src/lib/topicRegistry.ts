@@ -1,12 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
-// topic_registry and topic_pool are not in the generated Supabase types yet.
-// Cast supabase to any for all queries against these tables.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any;
-
 // ════════════════════════════════════════════════════════════════════════════
-// TOPIC KEY — the fingerprint that makes deduplication 100% reliable
+// TOPIC KEY
 // ════════════════════════════════════════════════════════════════════════════
 
 const STOPWORDS = new Set([
@@ -35,34 +30,20 @@ export function makeTopicKey(text: string): string {
 // REGISTRY READS
 // ════════════════════════════════════════════════════════════════════════════
 
-export async function loadRegisteredKeys(
-  subcategory: string
-): Promise<Set<string>> {
-  const { data, error } = await db
+export async function loadRegisteredKeys(subcategory: string): Promise<Set<string>> {
+  const { data, error } = await supabase
     .from('topic_registry')
     .select('topic_key')
     .eq('subcategory', subcategory);
-
-  if (error) {
-    console.error(`loadRegisteredKeys error [${subcategory}]:`, error.message);
-    return new Set();
-  }
-
-  return new Set((data ?? []).map((r: any) => r.topic_key));
+  if (error) { console.error(`loadRegisteredKeys error [${subcategory}]:`, error.message); return new Set(); }
+  return new Set((data ?? []).map(r => r.topic_key));
 }
 
-export async function loadAllRegisteredKeys(): Promise<
-  Record<string, Set<string>>
-> {
-  const { data, error } = await db
+export async function loadAllRegisteredKeys(): Promise<Record<string, Set<string>>> {
+  const { data, error } = await supabase
     .from('topic_registry')
     .select('subcategory, topic_key');
-
-  if (error) {
-    console.error('loadAllRegisteredKeys error:', error.message);
-    return {};
-  }
-
+  if (error) { console.error('loadAllRegisteredKeys error:', error.message); return {}; }
   const result: Record<string, Set<string>> = {};
   for (const row of data ?? []) {
     if (!result[row.subcategory]) result[row.subcategory] = new Set();
@@ -71,97 +52,61 @@ export async function loadAllRegisteredKeys(): Promise<
   return result;
 }
 
-export async function loadCoveredTitles(
-  subcategory: string,
-  limit = 50
-): Promise<string[]> {
-  const { data, error } = await db
+export async function loadCoveredTitles(subcategory: string, limit = 50): Promise<string[]> {
+  const { data, error } = await supabase
     .from('topic_registry')
     .select('title')
     .eq('subcategory', subcategory)
     .order('created_at', { ascending: false })
     .limit(limit);
-
-  if (error) {
-    console.error(`loadCoveredTitles error [${subcategory}]:`, error.message);
-    return [];
-  }
-
-  return (data ?? []).map((r: any) => r.title).filter(Boolean);
+  if (error) { console.error(`loadCoveredTitles error [${subcategory}]:`, error.message); return []; }
+  return (data ?? []).map(r => r.title).filter(Boolean) as string[];
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 // REGISTRY WRITES
 // ════════════════════════════════════════════════════════════════════════════
 
-export async function reserveTopic(
-  subcategory: string,
-  topic: string
-): Promise<{ ok: boolean; key: string }> {
+export async function reserveTopic(subcategory: string, topic: string): Promise<{ ok: boolean; key: string }> {
   const key = makeTopicKey(topic);
-
-  const { error } = await db
+  const { error } = await supabase
     .from('topic_registry')
     .insert({ subcategory, topic_key: key, title: null, article_id: null });
-
   if (error) {
-    if (error.code === '23505') {
-      return { ok: false, key };
-    }
+    if (error.code === '23505') return { ok: false, key };
     console.error(`reserveTopic error [${subcategory}/${key}]:`, error.message);
     return { ok: false, key };
   }
-
   return { ok: true, key };
 }
 
-export async function confirmTopic(
-  subcategory: string,
-  key: string,
-  title: string,
-  articleId: number
-): Promise<void> {
-  const { error } = await db
+export async function confirmTopic(subcategory: string, key: string, title: string, articleId: number): Promise<void> {
+  const { error } = await supabase
     .from('topic_registry')
     .update({ title, article_id: articleId })
     .eq('subcategory', subcategory)
     .eq('topic_key', key);
-
-  if (error) {
-    console.error(`confirmTopic error [${subcategory}/${key}]:`, error.message);
-  }
+  if (error) console.error(`confirmTopic error [${subcategory}/${key}]:`, error.message);
 }
 
-export async function releaseTopic(
-  subcategory: string,
-  key: string
-): Promise<void> {
-  const { error } = await db
+export async function releaseTopic(subcategory: string, key: string): Promise<void> {
+  const { error } = await supabase
     .from('topic_registry')
     .delete()
     .eq('subcategory', subcategory)
     .eq('topic_key', key)
     .is('article_id', null);
-
-  if (error) {
-    console.error(`releaseTopic error [${subcategory}/${key}]:`, error.message);
-  }
+  if (error) console.error(`releaseTopic error [${subcategory}/${key}]:`, error.message);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CONVENIENCE — check without reserving (read-only)
+// CONVENIENCE
 // ════════════════════════════════════════════════════════════════════════════
 
-export function isTopicCovered(
-  topic: string,
-  registeredKeys: Set<string>
-): boolean {
+export function isTopicCovered(topic: string, registeredKeys: Set<string>): boolean {
   return registeredKeys.has(makeTopicKey(topic));
 }
 
-export function filterAvailableTopics(
-  pool: string[],
-  registeredKeys: Set<string>
-): string[] {
+export function filterAvailableTopics(pool: string[], registeredKeys: Set<string>): string[] {
   return pool.filter(t => !registeredKeys.has(makeTopicKey(t)));
 }
