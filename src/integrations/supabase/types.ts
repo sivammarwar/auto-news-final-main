@@ -7,8 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.4"
   }
@@ -38,48 +36,104 @@ export type Database = {
         }
         Relationships: []
       }
+      article_images: {
+        Row: {
+          id: number
+          article_id: number
+          image_url: string
+          alt_text: string | null
+          position: number
+          width: number
+          height: number | null
+          size_kb: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          article_id: number
+          image_url: string
+          alt_text?: string | null
+          position: number
+          width?: number
+          height?: number | null
+          size_kb?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          article_id?: number
+          image_url?: string
+          alt_text?: string | null
+          position?: number
+          width?: number
+          height?: number | null
+          size_kb?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "article_images_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "articles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       articles: {
         Row: {
+          admin_notes: string | null
           category: string
           created_at: string
           id: number
           image_url: string | null
+          is_draft: boolean | null
           is_published: boolean | null
           published_date: string
           raw_content: string | null
+          scheduled_publish_date: string | null
           score: number | null
           source_name: string
-          source_url: string
+          source_url: string | null
           summary: string
           title: string
           updated_at: string
         }
         Insert: {
+          admin_notes?: string | null
           category: string
           created_at?: string
           id?: number
           image_url?: string | null
+          is_draft?: boolean | null
           is_published?: boolean | null
           published_date: string
           raw_content?: string | null
+          scheduled_publish_date?: string | null
           score?: number | null
           source_name: string
-          source_url: string
+          source_url?: string | null
           summary: string
           title: string
           updated_at?: string
         }
         Update: {
+          admin_notes?: string | null
           category?: string
           created_at?: string
           id?: number
           image_url?: string | null
+          is_draft?: boolean | null
           is_published?: boolean | null
           published_date?: string
           raw_content?: string | null
+          scheduled_publish_date?: string | null
           score?: number | null
           source_name?: string
-          source_url?: string
+          source_url?: string | null
           summary?: string
           title?: string
           updated_at?: string
@@ -124,7 +178,7 @@ type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
-export type Tables<
+export type Tables
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
@@ -153,7 +207,7 @@ export type Tables<
       : never
     : never
 
-export type TablesInsert<
+export type TablesInsert
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
@@ -178,7 +232,7 @@ export type TablesInsert<
       : never
     : never
 
-export type TablesUpdate<
+export type TablesUpdate
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
@@ -203,7 +257,7 @@ export type TablesUpdate<
       : never
     : never
 
-export type Enums<
+export type Enums
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
@@ -220,7 +274,7 @@ export type Enums<
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
-export type CompositeTypes<
+export type CompositeTypes
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
