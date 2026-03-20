@@ -7,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.4"
   }
@@ -38,59 +40,58 @@ export type Database = {
       }
       article_images: {
         Row: {
-          id: number
-          article_id: number
-          image_url: string
           alt_text: string | null
-          position: number
-          width: number
+          article_id: number
+          created_at: string | null
           height: number | null
-          size_kb: number | null
-          // Attribution columns (added in history migration)
+          id: number
+          image_source: string | null
+          image_url: string
           photographer: string | null
           photographer_url: string | null
-          image_source: string | null
+          position: number
+          size_kb: number | null
+          updated_at: string | null
+          width: number | null
           wiki_attribution: string | null
           wiki_license: string | null
           wiki_license_url: string | null
-          created_at: string
-          updated_at: string
         }
         Insert: {
-          id?: number
-          article_id: number
-          image_url: string
           alt_text?: string | null
-          position: number
-          width?: number
+          article_id: number
+          created_at?: string | null
           height?: number | null
-          size_kb?: number | null
+          id?: number
+          image_source?: string | null
+          image_url: string
           photographer?: string | null
           photographer_url?: string | null
-          image_source?: string | null
+          position?: number
+          size_kb?: number | null
+          updated_at?: string | null
+          width?: number | null
           wiki_attribution?: string | null
           wiki_license?: string | null
           wiki_license_url?: string | null
-          created_at?: string
-          updated_at?: string
         }
         Update: {
-          id?: number
-          article_id?: number
-          image_url?: string
           alt_text?: string | null
-          position?: number
-          width?: number
+          article_id?: number
+          created_at?: string | null
           height?: number | null
-          size_kb?: number | null
+          id?: number
+          image_source?: string | null
+          image_url?: string
           photographer?: string | null
           photographer_url?: string | null
-          image_source?: string | null
+          position?: number
+          size_kb?: number | null
+          updated_at?: string | null
+          width?: number | null
           wiki_attribution?: string | null
           wiki_license?: string | null
           wiki_license_url?: string | null
-          created_at?: string
-          updated_at?: string
         }
         Relationships: [
           {
@@ -99,20 +100,16 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "articles"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       articles: {
         Row: {
           admin_notes: string | null
           category: string
-          // History subcategory slug, e.g. 'ancient-civilizations'
-          subcategory: string | null
-          // Era label, e.g. 'ancient' | 'medieval' | 'modern' | 'all'
-          era: string | null
-          // 'known' | 'hidden' | 'both'
-          difficulty: string | null
           created_at: string
+          difficulty: string | null
+          era: string | null
           id: number
           image_url: string | null
           is_draft: boolean | null
@@ -123,6 +120,7 @@ export type Database = {
           score: number | null
           source_name: string
           source_url: string | null
+          subcategory: string | null
           summary: string
           title: string
           updated_at: string
@@ -130,10 +128,9 @@ export type Database = {
         Insert: {
           admin_notes?: string | null
           category: string
-          subcategory?: string | null
-          era?: string | null
-          difficulty?: string | null
           created_at?: string
+          difficulty?: string | null
+          era?: string | null
           id?: number
           image_url?: string | null
           is_draft?: boolean | null
@@ -144,6 +141,7 @@ export type Database = {
           score?: number | null
           source_name: string
           source_url?: string | null
+          subcategory?: string | null
           summary: string
           title: string
           updated_at?: string
@@ -151,10 +149,9 @@ export type Database = {
         Update: {
           admin_notes?: string | null
           category?: string
-          subcategory?: string | null
-          era?: string | null
-          difficulty?: string | null
           created_at?: string
+          difficulty?: string | null
+          era?: string | null
           id?: number
           image_url?: string | null
           is_draft?: boolean | null
@@ -165,6 +162,7 @@ export type Database = {
           score?: number | null
           source_name?: string
           source_url?: string | null
+          subcategory?: string | null
           summary?: string
           title?: string
           updated_at?: string
@@ -188,6 +186,68 @@ export type Database = {
           value?: string
         }
         Relationships: []
+      }
+      topic_pool: {
+        Row: {
+          created_at: string
+          id: number
+          is_used: boolean
+          subcategory: string
+          topic: string
+          topic_key: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          is_used?: boolean
+          subcategory: string
+          topic: string
+          topic_key: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          is_used?: boolean
+          subcategory?: string
+          topic?: string
+          topic_key?: string
+        }
+        Relationships: []
+      }
+      topic_registry: {
+        Row: {
+          article_id: number | null
+          created_at: string | null
+          id: number
+          subcategory: string
+          title: string | null
+          topic_key: string
+        }
+        Insert: {
+          article_id?: number | null
+          created_at?: string | null
+          id?: number
+          subcategory: string
+          title?: string | null
+          topic_key: string
+        }
+        Update: {
+          article_id?: number | null
+          created_at?: string | null
+          id?: number
+          subcategory?: string
+          title?: string | null
+          topic_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_registry_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "articles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
