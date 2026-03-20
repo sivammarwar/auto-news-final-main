@@ -2,13 +2,13 @@ name: Generate Articles
 
 on:
   schedule:
-    - cron: "15 16 * * *"  # 1:45 PM UTC daily
-  workflow_dispatch:        # manual trigger button in GitHub Actions tab
+    - cron: "15 16 * * *"  # 9:45 PM IST daily
+  workflow_dispatch:
 
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 360    # 6 hour max — enough for full pipeline
+    timeout-minutes: 360
 
     steps:
       - name: Trigger article generation
@@ -16,6 +16,7 @@ jobs:
           echo "Starting article generation at $(date)"
 
           RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -L \
             -X POST ${{ secrets.SITE_URL }}/api/cron/generate-articles \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \

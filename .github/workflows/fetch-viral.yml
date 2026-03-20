@@ -2,7 +2,7 @@ name: Fetch Viral Articles
 
 on:
   schedule:
-    - cron: "0 8 * * *"   # 8:00 AM UTC daily
+    - cron: "0 8 * * *"   # 1:30 PM IST daily
   workflow_dispatch:
 
 jobs:
@@ -13,6 +13,7 @@ jobs:
       - name: Trigger fetch-viral
         run: |
           RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -L \
             -X GET ${{ secrets.SITE_URL }}/api/cron/fetch-viral \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             --max-time 3600)
