@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import {
-  loadAllRegisteredKeys,
-  loadCoveredTitles,
-  reserveTopic,
-  confirmTopic,
-  releaseTopic,
-  filterAvailableTopics,
-} from '@/lib/topicRegistry';
 import { HISTORY_CATEGORIES } from '@/lib/historyCategories';
 
 function isAuthorized(req: NextRequest): boolean {
@@ -35,6 +27,7 @@ AND hidden chapters. 100% original writing. Ends every article with a one-liner 
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// ─── Settings helpers ─────────────────────────────────────────────────────────
 async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Promise<string> {
   const { data } = await db.from('settings').select('value').eq('key', key).single();
   return data?.value ?? '';
@@ -44,9 +37,54 @@ async function setSetting(db: ReturnType<typeof getSupabase>, key: string, value
   await db.from('settings').upsert({ key, value, updated_at: new Date().toISOString() });
 }
 
-async function groqRequest(messages: { role: string; content: string }[], maxTokens: number): Promise<string | null> {
-  const keys = [process.env.GROQ_API_KEY, process.env.GROQ_API_KEY_2, process.env.GROQ_API_KEY_3].filter(Boolean) as string[];
+// ─── Topic Pool helpers ───────────────────────────────────────────────────────
+async function pickTopicsFromPool(
+  db: ReturnType<typeof getSupabase>,
+  subcategory: string,
+  count: number
+): Promise<{ id: number; topic: string }[]> {
+  const { data, error } = await db
+    .from('topic_pool')
+    .select('id, topic')
+    .eq('subcategory', subcategory)
+    .eq('is_used', false)
+    .order('created_at', { ascending: true })
+    .limit(count);
+  if (error || !data) return [];
+  return data as { id: number; topic: string }[];
+}
+
+async function markTopicUsed(
+  db: ReturnType<typeof getSupabase>,
+  id: number
+): Promise<void> {
+  await db.from('topic_pool').update({ is_used: true }).eq('id', id);
+}
+
+async function getUnusedTopicCount(
+  db: ReturnType<typeof getSupabase>,
+  subcategory: string
+): Promise<number> {
+  const { count } = await db
+    .from('topic_pool')
+    .select('id', { count: 'exact', head: true })
+    .eq('subcategory', subcategory)
+    .eq('is_used', false);
+  return count ?? 0;
+}
+
+// ─── Groq ─────────────────────────────────────────────────────────────────────
+async function groqRequest(
+  messages: { role: string; content: string }[],
+  maxTokens: number
+): Promise<string | null> {
+  const keys = [
+    process.env.GROQ_API_KEY,
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3,
+  ].filter(Boolean) as string[];
   if (keys.length === 0) throw new Error('No GROQ_API_KEY set');
+
   for (let attempt = 0; attempt < MAX_RETRIES * keys.length; attempt++) {
     const key = keys[attempt % keys.length];
     const ctrl = new AbortController();
@@ -74,6 +112,7 @@ function extractJSON<T>(raw: string | null): T | null {
   try { return JSON.parse(m?.[0] ?? cleaned) as T; } catch { return null; }
 }
 
+// ─── Images ───────────────────────────────────────────────────────────────────
 async function fetchPexels(query: string, count = 2): Promise<any[]> {
   const key = process.env.PEXELS_API_KEY;
   if (!key) return [];
@@ -90,11 +129,18 @@ async function fetchPexels(query: string, count = 2): Promise<any[]> {
   } catch { return []; }
 }
 
-async function saveImages(db: ReturnType<typeof getSupabase>, articleId: number, title: string, subcategory: string, imageQueries: string[]): Promise<number> {
+async function saveImages(
+  db: ReturnType<typeof getSupabase>,
+  articleId: number,
+  title: string,
+  subcategory: string,
+  imageQueries: string[]
+): Promise<number> {
   const catConfig = HISTORY_CATEGORIES[subcategory];
   const queries   = [...imageQueries, ...(catConfig?.imageQueries ?? [])];
   const photos: any[] = [];
   const seen = new Set<string>();
+
   for (const q of queries.slice(0, 6)) {
     if (photos.length >= TARGET_IMAGES) break;
     const results = await fetchPexels(q, 2);
@@ -105,27 +151,34 @@ async function saveImages(db: ReturnType<typeof getSupabase>, articleId: number,
     await sleep(300);
   }
   if (photos.length === 0) return 0;
+
   const rows = photos.slice(0, TARGET_IMAGES).map((p, i) => ({
     article_id: articleId, image_url: p.src.large2x || p.src.large,
     alt_text: p.alt || title, position: i, width: p.width, height: p.height,
     size_kb: 0, photographer: p.photographer ?? null,
     photographer_url: p.photographer_url ?? null, image_source: 'pexels',
   }));
+
   const { error } = await db.from('article_images').insert(rows);
   if (error) return 0;
   await db.from('articles').update({ image_url: rows[0].image_url }).eq('id', articleId);
   return rows.length;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// ROUTE HANDLER
+// ════════════════════════════════════════════════════════════════════════════
 export async function POST(req: NextRequest) {
-  if (!isAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!isAuthorized(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const db   = getSupabase();
   const body = await req.json().catch(() => ({}));
 
-  const isManual: boolean            = body?.manual === true;
+  const isManual: boolean                = body?.manual === true;
   const targetSubcategory: string | null = body?.subcategory ?? null;
-  const articlesPerRun: number       = body?.articlesPerRun ?? 2;
+  const articlesPerRun: number           = body?.articlesPerRun ?? 2;
 
   // ── Schedule gate (skipped for manual triggers) ───────────────────────────
   if (!isManual) {
@@ -152,40 +205,52 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const allKeys        = Object.keys(HISTORY_CATEGORIES);
-    const registeredKeys = await loadAllRegisteredKeys();
+    const allKeys = Object.keys(HISTORY_CATEGORIES);
 
+    // ── Determine which subcategory to write for ──────────────────────────
     let targetKeys: string[];
+
     if (targetSubcategory && HISTORY_CATEGORIES[targetSubcategory]) {
       targetKeys = [targetSubcategory];
     } else {
-      const available = allKeys.filter(k => filterAvailableTopics(HISTORY_CATEGORIES[k].topicPool, registeredKeys[k] ?? new Set()).length > 0);
-      const pick = available.length > 0 ? available[Math.floor(Math.random() * available.length)] : allKeys[0];
+      // Pick a random subcategory that still has unused topics in the pool
+      const categoriesWithTopics: string[] = [];
+      for (const key of allKeys) {
+        const count = await getUnusedTopicCount(db, key);
+        if (count > 0) categoriesWithTopics.push(key);
+      }
+
+      if (categoriesWithTopics.length === 0) {
+        await setSetting(db, 'schedule_status', 'idle');
+        return NextResponse.json({
+          success:   true,
+          reason:    'All topic pools are empty. Add more topics in the Admin Panel.',
+          total:     results.total,
+          published: results.published,
+          drafts:    results.drafts,
+          skipped:   true,
+          errors:    results.errors,
+          details:   results.details,
+        }, { status: 200 });
+      }
+
+      const pick = categoriesWithTopics[Math.floor(Math.random() * categoriesWithTopics.length)];
       targetKeys = [pick];
     }
 
+    // ── Write articles for each target subcategory ────────────────────────
     for (const subcatKey of targetKeys) {
       const catConfig = HISTORY_CATEGORIES[subcatKey];
-      const myKeys    = registeredKeys[subcatKey] ?? new Set<string>();
-      const available = filterAvailableTopics(catConfig.topicPool, myKeys);
 
-      if (available.length === 0) {
+      const pickedTopics = await pickTopicsFromPool(db, subcatKey, articlesPerRun);
+
+      if (pickedTopics.length === 0) {
         results.skipped++;
-        results.details.push({ subcategory: subcatKey, title: '', status: 'pool_exhausted' });
+        results.details.push({ subcategory: subcatKey, title: '', status: 'no_topics_in_pool' });
         continue;
       }
 
-      const coveredTitles  = await loadCoveredTitles(subcatKey, 30);
-      const selectedTopics = available.slice(0, articlesPerRun);
-
-      for (const topic of selectedTopics) {
-        const { ok: reserved, key: topicKey } = await reserveTopic(subcatKey, topic);
-        if (!reserved) {
-          results.skipped++;
-          results.details.push({ subcategory: subcatKey, title: topic, status: 'already_reserved' });
-          continue;
-        }
-
+      for (const { id: topicId, topic } of pickedTopics) {
         try {
           await sleep(2000);
           const part1 = await groqRequest([
@@ -194,14 +259,15 @@ export async function POST(req: NextRequest) {
               content:
                 `You are ${AUTHOR.name}, ${AUTHOR.tagline}. ${AUTHOR.bio}\n\n` +
                 `TOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n` +
-                (coveredTitles.length > 0 ? `ALREADY COVERED:\n${coveredTitles.slice(0, 20).map(t => `- ${t}`).join('\n')}\n\n` : '') +
-                `## [Most surprising fact]\n(2-3 sentences)\n\n## What Everyone Knows\n(100-150 words)\n\n## What History Actually Shows\n(300-400 words, bold key facts)\n\nRULES: Paragraphs \\n\\n. No bullets. Original voice. Return text only.`,
+                `## [Most surprising fact]\n(2-3 sentences)\n\n` +
+                `## What Everyone Knows\n(100-150 words)\n\n` +
+                `## What History Actually Shows\n(300-400 words, bold key facts)\n\n` +
+                `RULES: Paragraphs \\n\\n. No bullets. Original voice. Return text only.`,
             },
             { role: 'user', content: `Write Part 1: "${topic}"` },
           ], 1500);
 
           if (!part1 || part1.length < 200) {
-            await releaseTopic(subcatKey, topicKey);
             results.errors++;
             results.details.push({ subcategory: subcatKey, title: topic, status: 'part1_failed' });
             continue;
@@ -211,7 +277,12 @@ export async function POST(req: NextRequest) {
           const part2 = await groqRequest([
             {
               role: 'system',
-              content: `You are ${AUTHOR.name}. Second half for: "${topic}"\n\n## The Part That Got Buried\n(200-250 words)\n\n## The Ripple Effect\n(150-200 words)\n\n## The Line That Says It All\n(1 sentence)\n\nOriginal voice. Return text only.`,
+              content:
+                `You are ${AUTHOR.name}. Second half for: "${topic}"\n\n` +
+                `## The Part That Got Buried\n(200-250 words)\n\n` +
+                `## The Ripple Effect\n(150-200 words)\n\n` +
+                `## The Line That Says It All\n(1 sentence)\n\n` +
+                `Original voice. Return text only.`,
             },
             { role: 'user', content: `Write Part 2: "${topic}"` },
           ], 1200);
@@ -221,7 +292,12 @@ export async function POST(req: NextRequest) {
           await sleep(3000);
           const metaRaw = await groqRequest([
             { role: 'system', content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
-            { role: 'user', content: `Metadata for: "${topic}"\nPreview: ${fullContent.substring(0, 400)}\nCompelling 10-18 word title, 3-sentence summary, score 0-10, 6 Pexels image queries. Raw JSON only.` },
+            {
+              role: 'user',
+              content:
+                `Metadata for: "${topic}"\nPreview: ${fullContent.substring(0, 400)}\n` +
+                `Compelling 10-18 word title, 3-sentence summary, score 0-10, 6 Pexels image queries. Raw JSON only.`,
+            },
           ], 500);
 
           interface Meta { title: string; summary: string; score: number; image_queries: string[] }
@@ -238,18 +314,19 @@ export async function POST(req: NextRequest) {
             era: catConfig.era, difficulty: 'both',
             published_date: new Date().toISOString(),
             is_draft: true, is_published: false, image_url: null,
-            admin_notes: `Topic: "${topic}" | ${isManual ? 'Manual' : 'Auto cron'}`,
+            admin_notes: `Topic: "${topic}" | ${isManual ? 'Manual trigger' : 'Auto cron'}`,
           }).select('id').single();
 
           if (saveErr) {
-            await releaseTopic(subcatKey, topicKey);
             results.errors++;
             results.details.push({ subcategory: subcatKey, title: topic, status: `save_failed: ${saveErr.message}` });
             continue;
           }
 
           const articleId = (saved as any).id;
-          await confirmTopic(subcatKey, topicKey, title, articleId);
+
+          // Mark topic as used ONLY after successful article save
+          await markTopicUsed(db, topicId);
           results.total++;
 
           const imageCount = await saveImages(db, articleId, title, subcatKey, imgQ);
@@ -257,7 +334,9 @@ export async function POST(req: NextRequest) {
           if (score >= AUTO_PUBLISH_SCORE && imageCount >= MIN_IMAGES_TO_PUBLISH) {
             const { data: verify } = await db.from('articles').select('raw_content, image_url').eq('id', articleId).single();
             if ((verify as any)?.raw_content?.length > 200 && (verify as any)?.image_url) {
-              await db.from('articles').update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() }).eq('id', articleId);
+              await db.from('articles')
+                .update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() })
+                .eq('id', articleId);
               results.published++;
               results.details.push({ subcategory: subcatKey, title, status: `published (score ${score.toFixed(1)})` });
             } else {
@@ -272,7 +351,6 @@ export async function POST(req: NextRequest) {
           await sleep(INTER_ARTICLE_PAUSE_MS);
 
         } catch (err: any) {
-          await releaseTopic(subcatKey, topicKey);
           results.errors++;
           results.details.push({ subcategory: subcatKey, title: topic, status: `error: ${err.message}` });
         }
