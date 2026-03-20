@@ -8,9 +8,9 @@ import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import ArticleCard from '@/components/ArticleCard';
 import ArticleBody from '@/components/ArticleBody';
-import { buildArticleJsonLd, ARTICLE_REVALIDATE_SECONDS } from '@/lib/article-seo';
+import { buildArticleJsonLd } from '@/lib/article-seo';
 
-export const revalidate = ARTICLE_REVALIDATE_SECONDS;
+export const revalidate = 86400; // 24 hours — must be a static number, not an imported constant
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://yourdomain.com';
 
@@ -39,7 +39,6 @@ const SUBCATEGORY_LABELS: Record<string, { label: string; emoji: string }> = {
   'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
 };
 
-// ── generateMetadata ──────────────────────────────────────────────────────────
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
@@ -93,7 +92,6 @@ export async function generateMetadata(
   };
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
 export default async function ArticlePage({
   params,
 }: {
@@ -212,7 +210,7 @@ export default async function ArticlePage({
               </div>
             )}
 
-            {/* Article body — client component */}
+            {/* Article body */}
             <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-12">
               <ArticleBody
                 content={article.raw_content || article.summary || ''}

@@ -6,10 +6,10 @@ import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import ArticleCard from '@/components/ArticleCard';
 import EmptyState from '@/components/EmptyState';
-import { buildCategoryMetadata, CATEGORY_REVALIDATE_SECONDS } from '@/lib/category-seo';
+import { buildCategoryMetadata } from '@/lib/category-seo';
 import { Article } from '@/types/article';
 
-export const revalidate = CATEGORY_REVALIDATE_SECONDS;
+export const revalidate = 3600; // 1 hour — must be a static number, not an imported constant
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -43,7 +43,6 @@ const CATEGORY_META: Record<string, { name: string; emoji: string; description: 
   'famous-figures':         { name: 'Famous Figures & Leaders',  emoji: '👑', description: 'Rulers, scientists, reformers — the real people behind the legends.' },
 };
 
-// ─── generateMetadata ─────────────────────────────────────────────────────────
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
@@ -51,7 +50,6 @@ export async function generateMetadata(
   return buildCategoryMetadata(slug);
 }
 
-// ─── generateStaticParams — pre-builds all 16 category pages at deploy time ──
 export async function generateStaticParams() {
   return [
     { slug: 'history' },
@@ -59,7 +57,6 @@ export async function generateStaticParams() {
   ];
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export default async function CategoryPage({
   params,
 }: {
@@ -67,7 +64,6 @@ export default async function CategoryPage({
 }) {
   const { slug } = await params;
 
-  // Fetch articles server-side
   let query = supabase
     .from('articles')
     .select('id, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
@@ -95,8 +91,6 @@ export default async function CategoryPage({
     <div className="min-h-screen bg-background flex flex-col">
       <SiteHeader />
       <main className="flex-1">
-
-        {/* Category hero */}
         <section className="border-b border-border">
           <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
             <div className="flex flex-col gap-2">
@@ -123,7 +117,6 @@ export default async function CategoryPage({
           </div>
         </section>
 
-        {/* Articles grid */}
         <section className="max-w-screen-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
           {!articles?.length ? (
             <EmptyState
