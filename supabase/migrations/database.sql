@@ -685,3 +685,18 @@ ON CONFLICT (key) DO NOTHING;
 SELECT key, value FROM public.settings
 WHERE key LIKE 'bulk_%'
 ORDER BY key;
+
+
+-- Allow anon to update settings (needed for admin panel scheduler)
+DROP POLICY IF EXISTS "Anon can update settings" ON public.settings;
+DROP POLICY IF EXISTS "Anon can insert settings" ON public.settings;
+DROP POLICY IF EXISTS "Anon can upsert settings" ON public.settings;
+
+CREATE POLICY "Anon can upsert settings"
+  ON public.settings FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "Anon can update settings"
+  ON public.settings FOR UPDATE
+  USING (true)
+  WITH CHECK (true);

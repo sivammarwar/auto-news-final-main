@@ -27,6 +27,15 @@ AND hidden chapters. 100% original writing. Ends every article with a one-liner 
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// ─── Compute the next wall-clock occurrence of a UTC hour (always future) ────
+function computeNextRun(hourUtc: number): string {
+  const now  = new Date();
+  const next = new Date();
+  next.setUTCHours(hourUtc, 0, 0, 0);
+  if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString();
+}
+
 // ─── Settings helpers ─────────────────────────────────────────────────────────
 async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Promise<string> {
   const { data } = await db.from('settings').select('value').eq('key', key).single();
@@ -196,7 +205,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await setSetting(db, 'schedule_status', 'running');
+  await setSetting(db, 'schedule_status',   'running');
   await setSetting(db, 'schedule_last_run', new Date().toISOString());
 
   const results = {
@@ -221,8 +230,6 @@ export async function POST(req: NextRequest) {
 
       if (categoriesWithTopics.length === 0) {
         await setSetting(db, 'schedule_status', 'idle');
-        // ── FIX: explicitly list fields instead of spreading results
-        //    to avoid duplicate 'skipped' key error ──────────────────
         return NextResponse.json({
           success:   true,
           reason:    'All topic pools are empty. Add more topics in the Admin Panel.',
@@ -292,7 +299,10 @@ export async function POST(req: NextRequest) {
 
           await sleep(3000);
           const metaRaw = await groqRequest([
-            { role: 'system', content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }' },
+            {
+              role: 'system',
+              content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }',
+            },
             {
               role: 'user',
               content:
@@ -357,8 +367,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await setSetting(db, 'schedule_status', 'idle');
-    await setSetting(db, 'schedule_next_run', new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());
+    // ── FIX: use computeNextRun so next run is always at the configured hour,
+    //    not 24h from now (which drifts on every execution).
+    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '2', 10);
+    await setSetting(db, 'schedule_status',   'idle');
+    await setSetting(db, 'schedule_next_run', computeNextRun(configuredHour));
 
     return NextResponse.json({ success: true, ...results }, { status: 200 });
 
