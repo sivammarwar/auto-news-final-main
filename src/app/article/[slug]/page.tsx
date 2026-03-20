@@ -13,13 +13,13 @@ import { useArticle, useRelatedArticles } from '@/hooks/useArticles';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ArticleImage {
-  id: number;
-  image_url: string;
-  alt_text?: string;
-  position: number;
-  width: number;
-  height?: number;
-}
+    id: number;
+    image_url: string;
+    alt_text?: string | null;  // ← add | null
+    position: number;
+    width: number;
+    height?: number | null;    // ← add | null
+  }
 
 // ─── RichBlock ────────────────────────────────────────────────────────────────
 const RichBlock = ({ text }: { text: string }) => {
