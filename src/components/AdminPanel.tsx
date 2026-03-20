@@ -60,7 +60,7 @@ const AUTHOR = {
 // CONFIG
 // ════════════════════════════════════════════════════════════════════════════
 const BATCH_SIZE               = 10;         // publish 10 articles, then take a long break
-const BATCH_PAUSE_MS           = 25 * 60 * 1000; // 25 min break after every 10 articles
+const BATCH_PAUSE_MS           = 5 * 60 * 1000; // 25 min break after every 10 articles
 const INTER_ARTICLE_PAUSE_MS   = 8_000;      // 8s between articles — safe under Groq 30 RPM
 const GROQ_TIMEOUT_MS          = 40_000;
 const MAX_RETRIES               = 5;
