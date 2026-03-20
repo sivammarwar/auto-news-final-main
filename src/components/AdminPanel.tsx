@@ -631,7 +631,7 @@ async function fetchAndSaveImages(
             if (_sessionUsedPexelsIds.has(pid)) continue;
             results.push({
               id: pid, url: p.src.large2x || p.src.large, alt: p.alt || query,
-              width: p.width, height: p.height, source: 'pexels' as const, downloadLocation: null,
+              width: p.width, height: p.height, source: 'pexels' as const, downloadLocation: undefined,
             });
           }
         }
