@@ -19,14 +19,18 @@ interface Article {
     is_draft: boolean | null;
     admin_notes?: string | null;
   }
-interface ArticleImage {
-  id: number;
-  image_url: string;
-  alt_text?: string;
-  position: number;
-  width: number;
-  height?: number;
-}
+  interface ArticleImage {
+    id: number;
+    article_id: number;
+    image_url: string;
+    alt_text?: string | null;
+    position: number;
+    width: number;
+    height?: number | null;
+    size_kb?: number | null;
+    created_at?: string;
+    updated_at?: string;
+  }
 interface GenLog {
   id: number;
   message: string;
@@ -426,11 +430,14 @@ function stripHtml(html: string): string {
 }
 
 interface HybridPhoto {
-  id: string; url: string; alt: string;
-  width: number; height: number;
-  source: 'wikimedia' | 'pexels' | 'omdb';
-  downloadLocation?: string;
-}
+    id: string;
+    url: string;
+    alt: string;
+    width: number;
+    height: number;
+    source: 'wikimedia' | 'pexels' | 'omdb';
+    downloadLocation?: string;
+  }
 
 // ─── Session-level deduplication ─────────────────────────────────────────────
 // Tracks ALL Pexels photo IDs used across the entire pipeline run.
