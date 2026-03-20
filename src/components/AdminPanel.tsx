@@ -19,18 +19,18 @@ interface Article {
     is_draft: boolean | null;
     admin_notes?: string | null;
   }
-  interface ArticleImage {
-    id: number;
-    article_id: number;
-    image_url: string;
-    alt_text?: string | null;
-    position: number;
-    width: number;
-    height?: number | null;
-    size_kb?: number | null;
-    created_at?: string;
-    updated_at?: string;
-  }
+interface ArticleImage {
+id: number;
+article_id?: number;
+image_url: string;
+alt_text?: string | null;
+position: number;
+width: number;
+height?: number | null;
+size_kb?: number | null;
+created_at?: string;
+updated_at?: string;
+}
 interface GenLog {
   id: number;
   message: string;
@@ -1884,8 +1884,11 @@ Return a JSON array of ${ARTICLES_PER_CATEGORY} FRESH trending topics NOT covere
     } catch (e: any) { setError(e.message); }
   };
 
-  const scoreColor = (s: number) =>
-    s >= 8 ? 'text-green-600 bg-green-50' : s >= 7 ? 'text-yellow-600 bg-yellow-50' : 'text-gray-500 bg-gray-100';
+  const scoreColor = (s: number | null) =>
+    s === null ? 'text-gray-500 bg-gray-100' :
+    s >= 8 ? 'text-green-600 bg-green-50' : 
+    s >= 7 ? 'text-yellow-600 bg-yellow-50' : 
+    'text-gray-500 bg-gray-100';
   const logColor = (t: GenLog['type']) =>
     t === 'success' ? 'text-green-400' : t === 'error' ? 'text-red-400' :
     t === 'warn' ? 'text-yellow-300' : t === 'progress' ? 'text-blue-300' : 'text-gray-400';
