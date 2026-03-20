@@ -48,9 +48,8 @@ async function pickTopicsFromPool(
     .select('id, topic')
     .eq('subcategory', subcategory)
     .eq('is_used', false)
-    .order('created_at', { ascending: true }) // FIFO — oldest topics first
+    .order('created_at', { ascending: true })
     .limit(count);
-
   if (error || !data) return [];
   return data as { id: number; topic: string }[];
 }
@@ -62,7 +61,6 @@ async function markTopicUsed(
   await db.from('topic_pool').update({ is_used: true }).eq('id', id);
 }
 
-// Get count of unused topics for a subcategory — used for category selection
 async function getUnusedTopicCount(
   db: ReturnType<typeof getSupabase>,
   subcategory: string
@@ -178,9 +176,9 @@ export async function POST(req: NextRequest) {
   const db   = getSupabase();
   const body = await req.json().catch(() => ({}));
 
-  const isManual: boolean             = body?.manual === true;
+  const isManual: boolean                = body?.manual === true;
   const targetSubcategory: string | null = body?.subcategory ?? null;
-  const articlesPerRun: number        = body?.articlesPerRun ?? 2;
+  const articlesPerRun: number           = body?.articlesPerRun ?? 2;
 
   // ── Schedule gate (skipped for manual triggers) ───────────────────────────
   if (!isManual) {
@@ -213,10 +211,8 @@ export async function POST(req: NextRequest) {
     let targetKeys: string[];
 
     if (targetSubcategory && HISTORY_CATEGORIES[targetSubcategory]) {
-      // Explicit subcategory passed in request body
       targetKeys = [targetSubcategory];
     } else {
-      // Pick a random subcategory that still has unused topics in the pool
       const categoriesWithTopics: string[] = [];
       for (const key of allKeys) {
         const count = await getUnusedTopicCount(db, key);
@@ -225,10 +221,17 @@ export async function POST(req: NextRequest) {
 
       if (categoriesWithTopics.length === 0) {
         await setSetting(db, 'schedule_status', 'idle');
+        // ── FIX: explicitly list fields instead of spreading results
+        //    to avoid duplicate 'skipped' key error ──────────────────
         return NextResponse.json({
-          success: true, skipped: true,
-          reason: 'All topic pools are empty. Add more topics in the Admin Panel.',
-          ...results,
+          success:   true,
+          reason:    'All topic pools are empty. Add more topics in the Admin Panel.',
+          total:     results.total,
+          published: results.published,
+          drafts:    results.drafts,
+          skipped:   true,
+          errors:    results.errors,
+          details:   results.details,
         }, { status: 200 });
       }
 
@@ -240,7 +243,6 @@ export async function POST(req: NextRequest) {
     for (const subcatKey of targetKeys) {
       const catConfig = HISTORY_CATEGORIES[subcatKey];
 
-      // Pick unused topics from DB pool
       const pickedTopics = await pickTopicsFromPool(db, subcatKey, articlesPerRun);
 
       if (pickedTopics.length === 0) {
@@ -306,7 +308,6 @@ export async function POST(req: NextRequest) {
           const score   = Math.min(10, Math.max(0, parseFloat(String(meta?.score ?? 8.0)) || 8.0));
           const imgQ    = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 4);
 
-          // Save article
           const { data: saved, error: saveErr } = await db.from('articles').insert({
             title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
             summary: summary.substring(0, 500), raw_content: fullContent,
@@ -325,14 +326,11 @@ export async function POST(req: NextRequest) {
 
           const articleId = (saved as any).id;
 
-          // Mark topic as used ONLY after successful article save
           await markTopicUsed(db, topicId);
           results.total++;
 
-          // Images
           const imageCount = await saveImages(db, articleId, title, subcatKey, imgQ);
 
-          // Auto-publish
           if (score >= AUTO_PUBLISH_SCORE && imageCount >= MIN_IMAGES_TO_PUBLISH) {
             const { data: verify } = await db.from('articles').select('raw_content, image_url').eq('id', articleId).single();
             if ((verify as any)?.raw_content?.length > 200 && (verify as any)?.image_url) {
