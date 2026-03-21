@@ -220,7 +220,7 @@ export default function SchedulerPanel() {
     await supabase.from('settings').upsert({ key: 'bulk_schedule_last_run', value: new Date().toISOString(), updated_at: new Date().toISOString() });
     setBulk(s => ({ ...s, status: 'running', lastRun: new Date().toISOString() }));
     try {
-      addBulkLog(`📡 Calling /api/generate-articles (all 15 categories × 2 articles)...`, 'info');
+      addBulkLog(`📡 Calling /api/generate-articles (all 15 categories × 1 articles)...`, 'info');
       const res = await fetch('/api/generate-articles', {
         method: 'POST',
         headers: {
@@ -370,9 +370,9 @@ export default function SchedulerPanel() {
       <Card className="p-5 border-2 border-purple-200 bg-purple-50/20">
         <h2 className="font-bold text-lg text-purple-900 mb-1 flex items-center gap-2">
           🗂️ Bulk Generation Schedule
-          <span className="text-xs font-normal text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">All 15 categories × 2 articles</span>
+          <span className="text-xs font-normal text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">All 15 categories × 1 articles</span>
         </h2>
-        <p className="text-xs text-purple-600 mb-4">Runs the full pipeline — picks 2 unused topics from each category, writes 30 articles total, marks topics as used.</p>
+        <p className="text-xs text-purple-600 mb-4">Runs the full pipeline — picks 1 unused topics from each category, writes 15 articles total, marks topics as used.</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
           <div>
@@ -431,7 +431,7 @@ export default function SchedulerPanel() {
           >
             {bulkTriggering ? '⏳ Generating all 15 categories...' : '🗂️ Run Bulk Generation Now'}
           </Button>
-          <p className="text-xs text-gray-400 mt-2 text-center">This will write up to 30 articles. Takes 20–40 minutes depending on Groq rate limits.</p>
+          <p className="text-xs text-gray-400 mt-2 text-center">This will write up to 15 articles. Takes 20–40 minutes depending on Groq rate limits.</p>
         </div>
 
         {bulkLogs.length > 0 && (
