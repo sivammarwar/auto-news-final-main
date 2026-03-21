@@ -2,7 +2,7 @@ name: Generate History Articles
 
 on:
   schedule:
-    - cron: "30 12 * * *"   # 2:30 PM IST daily (UTC 9:00 = IST 14:30)
+    - cron: "0 14 * * *"   # 2:30 PM IST daily (UTC 9:00 = IST 14:30)
   workflow_dispatch:
 
 jobs:
