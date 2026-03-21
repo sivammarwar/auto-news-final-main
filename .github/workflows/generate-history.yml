@@ -2,13 +2,13 @@ name: Generate History Articles
 
 on:
   schedule:
-    - cron: "0 9 * * *"   # 2:00 PM IST daily (UTC 8:30 = IST 14:00)
+    - cron: "0 9 * * *"   # 2:30 PM IST daily (UTC 9:00 = IST 14:30)
   workflow_dispatch:
 
 jobs:
   generate-history:
     runs-on: ubuntu-latest
-    timeout-minutes: 180   # 3 hours — enough for 15 categories × 1 article
+    timeout-minutes: 180
 
     steps:
       - name: Trigger history article generation (all 15 categories, 1 each)

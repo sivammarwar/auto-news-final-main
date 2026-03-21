@@ -14,10 +14,10 @@ const GROQ_TIMEOUT_MS        = 40_000;
 const INTER_ARTICLE_PAUSE_MS = 8_000;
 const MAX_RETRIES            = 5;
 const AUTO_PUBLISH_SCORE     = 7.5;
-const TARGET_IMAGES          = 2;   // ← changed from 6
+const TARGET_IMAGES          = 2;
 const MIN_IMAGES_TO_PUBLISH  = 2;
 const IMAGE_MIN_WIDTH        = 800;
-const ARTICLES_PER_CATEGORY  = 1;   // ← changed from 2
+const ARTICLES_PER_CATEGORY  = 1;
 
 const AUTHOR = {
   name:    'Arjun Mehta',
@@ -28,14 +28,6 @@ AND hidden chapters. 100% original writing. Ends every article with a one-liner 
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-function computeNextRun(hourUtc: number): string {
-  const now  = new Date();
-  const next = new Date();
-  next.setUTCHours(hourUtc, 0, 0, 0);
-  if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString();
-}
-
 async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Promise<string> {
   const { data } = await db.from('settings').select('value').eq('key', key).single();
   return data?.value ?? '';
@@ -43,6 +35,14 @@ async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Prom
 
 async function setSetting(db: ReturnType<typeof getSupabase>, key: string, value: string) {
   await db.from('settings').upsert({ key, value, updated_at: new Date().toISOString() });
+}
+
+function computeNextRun(hourUtc: number): string {
+  const now  = new Date();
+  const next = new Date();
+  next.setUTCHours(hourUtc, 0, 0, 0);
+  if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString();
 }
 
 async function pickTopicsFromPool(
@@ -167,21 +167,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const isManual: boolean = body?.manual === true;
 
-  // ── Schedule gate (skipped for manual triggers) ───────────────────────────
-  if (!isManual) {
-    const enabled = await getSetting(db, 'schedule_enabled');
-    if (enabled !== 'true') {
-      return NextResponse.json({ success: true, skipped: true, reason: 'Schedule disabled' }, { status: 200 });
-    }
-    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '23', 10);
-    const currentHour    = new Date().getUTCHours();
-    if (currentHour !== configuredHour) {
-      return NextResponse.json({
-        success: true, skipped: true,
-        reason: `Not scheduled hour. Configured: ${configuredHour}:00 UTC, Current: ${currentHour}:00 UTC`,
-      }, { status: 200 });
-    }
-  }
+  console.log(`\n🏛️ generate-history called — manual: ${isManual}`);
 
   await setSetting(db, 'schedule_status',   'running');
   await setSetting(db, 'schedule_last_run', new Date().toISOString());
@@ -193,8 +179,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const allKeys = Object.keys(HISTORY_CATEGORIES);
+    console.log(`📋 Running all ${allKeys.length} categories × ${ARTICLES_PER_CATEGORY} article each`);
 
-    // ── Run ALL 15 categories, 1 article each ─────────────────────────────
+    // ── Loop ALL 15 categories, 1 article each ────────────────────────────
     for (const subcatKey of allKeys) {
       const catConfig    = HISTORY_CATEGORIES[subcatKey];
       const pickedTopics = await pickTopicsFromPool(db, subcatKey, ARTICLES_PER_CATEGORY);
@@ -216,11 +203,12 @@ export async function POST(req: NextRequest) {
               role: 'system',
               content:
                 `You are ${AUTHOR.name}, ${AUTHOR.tagline}. ${AUTHOR.bio}\n\n` +
+                `Write the FIRST HALF of a gripping history article.\n` +
                 `TOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n` +
-                `## [Most surprising fact]\n(2-3 sentences)\n\n` +
+                `## [Most surprising fact as a statement]\n(2-3 sentences)\n\n` +
                 `## What Everyone Knows\n(100-150 words)\n\n` +
                 `## What History Actually Shows\n(300-400 words, bold key facts)\n\n` +
-                `RULES: Paragraphs \\n\\n. No bullets. Original voice. Return text only.`,
+                `RULES: Paragraphs separated by \\n\\n. No bullet points. Original voice only. Return text only.`,
             },
             { role: 'user', content: `Write Part 1: "${topic}"` },
           ], 1500);
@@ -228,6 +216,7 @@ export async function POST(req: NextRequest) {
           if (!part1 || part1.length < 200) {
             results.errors++;
             results.details.push({ subcategory: subcatKey, title: topic, status: 'part1_failed' });
+            console.log(`   ✗ Part 1 failed`);
             continue;
           }
 
@@ -236,11 +225,11 @@ export async function POST(req: NextRequest) {
             {
               role: 'system',
               content:
-                `You are ${AUTHOR.name}. Second half for: "${topic}"\n\n` +
+                `You are ${AUTHOR.name}. Write the SECOND HALF about: "${topic}"\n\n` +
                 `## The Part That Got Buried\n(200-250 words)\n\n` +
                 `## The Ripple Effect\n(150-200 words)\n\n` +
                 `## The Line That Says It All\n(1 sentence)\n\n` +
-                `Original voice. Return text only.`,
+                `Original voice. No bullet points. Return text only.`,
             },
             { role: 'user', content: `Write Part 2: "${topic}"` },
           ], 1200);
@@ -281,33 +270,42 @@ export async function POST(req: NextRequest) {
           if (saveErr) {
             results.errors++;
             results.details.push({ subcategory: subcatKey, title: topic, status: `save_failed: ${saveErr.message}` });
+            console.log(`   ✗ Save failed: ${saveErr.message}`);
             continue;
           }
 
           const articleId = (saved as any).id;
           await markTopicUsed(db, topicId);
           results.total++;
+          console.log(`   ✅ Article #${articleId} saved | score ${score.toFixed(1)}`);
 
           const imageCount = await saveImages(db, articleId, title, subcatKey, imgQ);
           console.log(`   🖼  ${imageCount} images saved`);
 
           if (score >= AUTO_PUBLISH_SCORE && imageCount >= MIN_IMAGES_TO_PUBLISH) {
-            const { data: verify } = await db.from('articles').select('raw_content, image_url').eq('id', articleId).single();
+            const { data: verify } = await db
+              .from('articles')
+              .select('raw_content, image_url')
+              .eq('id', articleId)
+              .single();
             if ((verify as any)?.raw_content?.length > 200 && (verify as any)?.image_url) {
               await db.from('articles')
                 .update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() })
                 .eq('id', articleId);
               results.published++;
               results.details.push({ subcategory: subcatKey, title, status: `published (score ${score.toFixed(1)})` });
-              console.log(`   🚀 AUTO-PUBLISHED #${articleId} (${score.toFixed(1)}⭐)`);
+              console.log(`   🚀 AUTO-PUBLISHED #${articleId}`);
             } else {
               results.drafts++;
               results.details.push({ subcategory: subcatKey, title, status: 'draft (verify failed)' });
             }
           } else {
             results.drafts++;
-            const reason = imageCount < MIN_IMAGES_TO_PUBLISH ? `only ${imageCount} images` : `score ${score.toFixed(1)} < ${AUTO_PUBLISH_SCORE}`;
+            const reason = imageCount < MIN_IMAGES_TO_PUBLISH
+              ? `only ${imageCount} images`
+              : `score ${score.toFixed(1)} < ${AUTO_PUBLISH_SCORE}`;
             results.details.push({ subcategory: subcatKey, title, status: `draft (${reason})` });
+            console.log(`   📋 Draft — ${reason}`);
           }
 
           await sleep(INTER_ARTICLE_PAUSE_MS);
@@ -315,11 +313,12 @@ export async function POST(req: NextRequest) {
         } catch (err: any) {
           results.errors++;
           results.details.push({ subcategory: subcatKey, title: topic, status: `error: ${err.message}` });
+          console.log(`   ❌ Error: ${err.message}`);
         }
       }
     }
 
-    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '23', 10);
+    const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '9', 10);
     await setSetting(db, 'schedule_status',   'idle');
     await setSetting(db, 'schedule_next_run', computeNextRun(configuredHour));
 
@@ -328,6 +327,7 @@ export async function POST(req: NextRequest) {
 
   } catch (err: any) {
     await setSetting(db, 'schedule_status', 'error');
+    console.log(`\n❌ Fatal: ${err.message}`);
     return NextResponse.json({ success: false, error: err.message, ...results }, { status: 500 });
   }
 }
