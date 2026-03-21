@@ -39,11 +39,9 @@ const SUBCATEGORY_LABELS: Record<string, { label: string; emoji: string }> = {
   'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
 };
 
-/** Supports both slug (new) and numeric ID (legacy) */
 async function fetchArticle(slug: string) {
   const db = getSupabase();
 
-  // Try slug first
   const { data: bySlug } = await db
     .from('articles')
     .select('*')
@@ -53,7 +51,6 @@ async function fetchArticle(slug: string) {
 
   if (bySlug) return { db, article: bySlug };
 
-  // Fall back to numeric ID for old links
   const id = parseInt(slug, 10);
   if (isNaN(id)) return { db, article: null };
 
@@ -143,9 +140,15 @@ export default async function ArticlePage({
   const pubDate       = format(new Date(article.published_date), 'MMMM d, yyyy');
   const jsonLd        = buildArticleJsonLd(article);
   const heroImage     = images?.[0] ?? null;
+  const heroSrc       = heroImage?.image_url || article.image_url;
 
   return (
     <>
+      {/* Preload hero image for faster LCP */}
+      {heroSrc && (
+        <link rel="preload" as="image" href={heroSrc} />
+      )}
+
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -202,17 +205,19 @@ export default async function ArticlePage({
               )}
             </div>
 
-            {/* Hero image */}
-            {(heroImage || article.image_url) && (
+            {/* Hero image — eager + fetchPriority for best LCP */}
+            {heroSrc && (
               <div className="w-full mb-8">
                 <div className="max-w-3xl mx-auto sm:px-6">
                   <div className="overflow-hidden sm:rounded-xl bg-muted">
                     <img
-                      src={heroImage?.image_url || article.image_url}
+                      src={heroSrc}
                       alt={heroImage?.alt_text || article.title}
                       className="w-full h-auto block"
                       style={{ maxHeight: '65vh', objectFit: 'cover', width: '100%' }}
                       loading="eager"
+                      fetchPriority="high"
+                      decoding="sync"
                     />
                   </div>
                   {heroImage && <ImageCredit image={heroImage} />}

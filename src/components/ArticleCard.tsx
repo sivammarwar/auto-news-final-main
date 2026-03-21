@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { Article } from '@/types/article';
 import { formatDistanceToNow } from 'date-fns';
 import { useState } from 'react';
@@ -43,31 +42,26 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
     ? `${subcatMeta.emoji} ${subcatMeta.label}`
     : article.category;
 
-  // Flash blue first, then navigate after the flash is visible
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't intercept category link clicks
     if ((e.target as HTMLElement).closest('a[data-category]')) return;
     e.preventDefault();
     setClicking(true);
-    setTimeout(() => {
-      router.push(articleHref);
-    }, 200); // navigate after 200ms so flash is visible
+    setTimeout(() => router.push(articleHref), 200);
   };
 
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ delay: index * 0.05, duration: 0.4 }}
+    <article
       onClick={handleCardClick}
       className={`
-        group relative flex flex-col p-4 sm:p-6
+        card-fadein group relative flex flex-col p-4 sm:p-6
         shadow-card hover:shadow-card-hover
         z-0 hover:z-10 cursor-pointer select-none
         ${clicking ? 'bg-blue-100 dark:bg-blue-900' : 'bg-background'}
       `}
-      style={{ transition: 'background-color 0.15s ease' }}
+      style={{
+        animationDelay: `${index * 50}ms`,
+        transition: 'background-color 0.15s ease',
+      }}
     >
       {article.image_url && (
         <div className="aspect-video overflow-hidden mb-4 rounded-lg">
@@ -76,6 +70,7 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
             alt={article.title}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
+            decoding="async"
           />
         </div>
       )}
@@ -116,7 +111,7 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
           </span>
         )}
       </div>
-    </motion.article>
+    </article>
   );
 };
 

@@ -4,6 +4,7 @@
 
 import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/components/Providers';
+import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
@@ -82,6 +83,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           {children}
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
