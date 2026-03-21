@@ -28,6 +28,26 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
   'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
 };
 
+/**
+ * Resize Pexels images to card display size.
+ * Cards display at ~609px wide — use 640px + WebP for best quality/size ratio.
+ * Saves ~300-400 KB per card vs the default 1880px originals.
+ */
+function pexelsResize(url: string, width = 640, quality = 75): string {
+  if (!url || !url.includes('pexels.com')) return url;
+  try {
+    const u = new URL(url);
+    u.searchParams.set('w', String(width));
+    u.searchParams.set('q', String(quality));
+    u.searchParams.set('auto', 'compress');
+    u.searchParams.set('cs', 'tinysrgb');
+    u.searchParams.set('fit', 'crop');
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
   const router      = useRouter();
   const timeAgo     = formatDistanceToNow(new Date(article.published_date), { addSuffix: true });
@@ -64,10 +84,21 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
       }}
     >
       {article.image_url && (
-        <div className="aspect-video overflow-hidden mb-4 rounded-lg">
+        /*
+          CLS FIX: Added explicit width/height + aspect-video container.
+          The aspect-video class (16/9 ratio) reserves the exact space before
+          the image loads, preventing any layout shift from image pop-in.
+
+          IMAGE SIZE FIX: pexelsResize() shrinks from 1880px → 640px.
+          This saves ~300-400 KB per card. With 8 cards on the page,
+          that's potentially 2-3 MB saved = major LCP improvement.
+        */
+        <div className="aspect-video overflow-hidden mb-4 rounded-lg bg-muted">
           <img
-            src={article.image_url}
+            src={pexelsResize(article.image_url)}
             alt={article.title}
+            width={640}
+            height={360}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
             decoding="async"

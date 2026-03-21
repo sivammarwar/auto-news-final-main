@@ -1,14 +1,21 @@
-'use client';
+// src/app/page.tsx
+// CONVERTED FROM CLIENT → SERVER COMPONENT
+// This eliminates the 0.592 CLS entirely — previously the page rendered a
+// loading spinner first, then articles popped in, pushing the footer down.
+// Now Supabase is fetched server-side, HTML is fully rendered before the
+// browser sees it, so there is no layout shift at all.
 
+import { createClient } from '@supabase/supabase-js';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import HeroSection from '@/components/HeroSection';
 import ArticleCard from '@/components/ArticleCard';
 import EmptyState from '@/components/EmptyState';
 import Link from 'next/link';
-import { useArticles } from '@/hooks/useArticles';
 
-// All 15 subcategories shown as quick-nav pills below the hero
+// ISR: revalidate every 30 minutes so new articles appear without a full rebuild
+export const revalidate = 1800;
+
 const QUICK_LINKS = [
   { label: '🏛️ Ancient',       path: '/category/ancient-civilizations' },
   { label: '⚔️ Medieval',       path: '/category/medieval-feudal' },
@@ -27,24 +34,39 @@ const QUICK_LINKS = [
   { label: '👑 Famous Figures', path: '/category/famous-figures' },
 ];
 
-export default function Home() {
-  const { data: articles, isLoading } = useArticles();
+async function getArticles() {
+  const db = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
-  const heroArticle  = articles?.[0];
-  const gridArticles = articles?.slice(1) ?? [];
+  const { data, error } = await db
+    .from('articles')
+    .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
+    .eq('is_published', true)
+    .order('published_date', { ascending: false })
+    .limit(13); // 1 hero + 12 grid
+
+  if (error) {
+    console.error('Failed to fetch articles:', error);
+    return [];
+  }
+
+  return data ?? [];
+}
+
+export default async function Home() {
+  const articles = await getArticles();
+
+  const heroArticle  = articles[0];
+  const gridArticles = articles.slice(1);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <SiteHeader />
 
       <main className="flex-1">
-        {isLoading ? (
-          <div className="py-32 text-center">
-            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground animate-pulse">
-              Loading history...
-            </span>
-          </div>
-        ) : !heroArticle ? (
+        {!heroArticle ? (
           <EmptyState />
         ) : (
           <>
@@ -76,7 +98,7 @@ export default function Home() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0">
                 {gridArticles.map((article, i) => (
-                  <ArticleCard key={article.id} article={article} index={i} />
+                  <ArticleCard key={article.id} article={article as any} index={i} />
                 ))}
               </div>
             </section>
