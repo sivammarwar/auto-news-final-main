@@ -2,6 +2,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/components/Providers';
 import { Analytics } from '@vercel/analytics/next';
+import Script from 'next/script';
 import './globals.css';
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
@@ -58,28 +59,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/*
-          PRECONNECT FIXES:
-          1. Added crossOrigin="" — without this, preconnect is ignored for CORS
-             image requests (Pexels uses CORS). Lighthouse was warning about this.
-          2. Removed wikimedia — it was unused, wasting a connection slot.
-          3. Added supabase — Lighthouse flagged 310ms savings from preconnecting
-             to your DB origin. This alone can shave ~300ms off LCP.
-          4. Kept dns-prefetch as fallback for browsers that don't support preconnect.
-        */}
         <link rel="preconnect" href="https://images.pexels.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://images.pexels.com" />
         <link rel="preconnect" href="https://gybxyzdjvptlitymvxlc.supabase.co" crossOrigin="" />
         <link rel="dns-prefetch" href="https://gybxyzdjvptlitymvxlc.supabase.co" />
 
-        {/*
-          CLS FIX — font-synthesis:none globally:
-          The footer's 0.592 CLS is caused by the browser synthesizing fake bold/italic
-          versions of your monospace font BEFORE the real font loads. When the real font
-          arrives, all text reflows because glyph widths change. Setting font-synthesis:none
-          prevents this — the browser waits for the real font instead of synthesizing.
-          This must be in a <style> tag in <head> to apply before first paint.
-        */}
+        {/* Preconnect to AdSense for faster script load */}
+        <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com" />
+
         <style>{`
           *, *::before, *::after {
             font-synthesis: none;
@@ -91,6 +79,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </Providers>
         <Analytics />
+
+        {/*
+          AdSense script — placed here instead of <head> so it loads AFTER
+          your content. strategy="afterInteractive" means it won't block
+          rendering or hurt your LCP score.
+        */}
+        <Script
+          id="adsense-script"
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
