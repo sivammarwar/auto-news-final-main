@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
 
     const { data: articles, error } = await supabase
       .from('articles')
-      .select('id, published_date, updated_at, subcategory')
+      .select('id, slug, published_date, updated_at, subcategory')
       .eq('is_published', true)
       .eq('category', 'history')
       .order('published_date', { ascending: false })
@@ -101,12 +101,13 @@ export async function GET(req: NextRequest) {
     urls.push(buildUrl(domain, '/terms',   0.3, FREQ.legal, today));
     urls.push(buildUrl(domain, '/rss',     0.3, FREQ.legal, today));
 
-    // ── Article pages ─────────────────────────────────────────────────────
+    // ── Article pages — use slug, fall back to id for old articles ────────
     (articles ?? []).forEach((article: any) => {
-      const lastmod = new Date(article.updated_at || article.published_date)
+      const lastmod    = new Date(article.updated_at || article.published_date)
         .toISOString()
         .split('T')[0];
-      urls.push(buildUrl(domain, `/article/${article.id}`, 0.8, FREQ.article, lastmod));
+      const identifier = article.slug || article.id;
+      urls.push(buildUrl(domain, `/article/${identifier}`, 0.8, FREQ.article, lastmod));
     });
 
     const xml = [
