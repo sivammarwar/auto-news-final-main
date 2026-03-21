@@ -48,7 +48,7 @@ export default function RSSPage() {
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary font-bold mb-3">Subscribe</p>
             <h1 className="text-3xl sm:text-5xl font-bold tracking-tightest text-foreground mb-4">RSS Feeds</h1>
             <p className="text-muted-foreground text-sm sm:text-base leading-relaxed max-w-xl">
-              Follow Signal in your favourite RSS reader. Get every new article delivered directly to you — no algorithm, no noise, no ads.
+              Follow Hidden Facts in your favourite RSS reader. Get every new article delivered directly to you — no algorithm, no noise, no ads.
             </p>
           </div>
 
@@ -95,7 +95,7 @@ export default function RSSPage() {
               <li className="flex gap-3"><span className="font-mono font-bold text-primary shrink-0">01.</span><span>Choose an RSS reader from the list below and create a free account.</span></li>
               <li className="flex gap-3"><span className="font-mono font-bold text-primary shrink-0">02.</span><span>Copy the feed URL you want from the list above.</span></li>
               <li className="flex gap-3"><span className="font-mono font-bold text-primary shrink-0">03.</span><span>In your RSS reader, click "Add feed" or "Subscribe" and paste the URL.</span></li>
-              <li className="flex gap-3"><span className="font-mono font-bold text-primary shrink-0">04.</span><span>New Signal articles will appear in your reader automatically.</span></li>
+              <li className="flex gap-3"><span className="font-mono font-bold text-primary shrink-0">04.</span><span>New Hidden Facts articles will appear in your reader automatically.</span></li>
             </ol>
           </div>
 

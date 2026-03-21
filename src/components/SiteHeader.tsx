@@ -59,7 +59,7 @@ const SiteHeader = () => {
             href="/"
             className="font-bold text-xl tracking-tightest text-foreground hover:text-primary transition-colors shrink-0"
           >
-            SIGNAL <span className="font-mono text-[11px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">History</span>
+            Hidden <span className="font-mono text-[11px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">Facts</span>
           </Link>
 
           {/* Desktop nav */}

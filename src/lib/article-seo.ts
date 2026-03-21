@@ -49,10 +49,10 @@ export async function generateMetadata(
   const description   = article.summary?.slice(0, 160) ?? '';
 
   return {
-    title:       `${article.title} | Signal History`,
+    title:       `${article.title} | Hidden Facts`,
     description,
-    authors:     [{ name: article.source_name ?? 'Signal History' }],
-    keywords:    [categoryLabel, 'history', 'Signal History', article.subcategory ?? ''].filter(Boolean),
+    authors:     [{ name: article.source_name ?? 'Hidden Facts' }],
+    keywords:    [categoryLabel, 'history', 'Hidden Facts', article.subcategory ?? ''].filter(Boolean),
 
     // ── Open Graph ─────────────────────────────────────────────────────────
     openGraph: {
@@ -60,10 +60,10 @@ export async function generateMetadata(
       url,
       title:       article.title,
       description,
-      siteName:    'Signal History',
+      siteName:    'Hidden Facts',
       publishedTime: article.published_date,
       modifiedTime:  article.updated_at,
-      authors:     [article.source_name ?? 'Signal History'],
+      authors:     [article.source_name ?? 'Hidden Facts'],
       section:     categoryLabel,
       images: [
         {
@@ -140,11 +140,11 @@ export function buildArticleJsonLd(article: {
     },
     author: {
       '@type': 'Person',
-      name:    article.source_name ?? 'Signal History',
+      name:    article.source_name ?? 'Hidden Facts',
     },
     publisher: {
       '@type': 'Organization',
-      name:    'Signal History',
+      name:    'Hidden Facts',
       logo: {
         '@type': 'ImageObject',
         url:     `${BASE_URL}/logo.png`,

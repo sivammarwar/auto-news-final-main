@@ -27,7 +27,7 @@ const SiteFooter = () => {
           {/* Brand */}
           <div>
             <Link href="/" className="font-bold text-xl tracking-tightest text-foreground hover:text-primary transition-colors">
-              SIGNAL <span className="font-mono text-[11px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">History</span>
+               <span className="font-mono text-[11px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">History</span>
             </Link>
             <p className="mt-3 font-mono text-[11px] leading-relaxed text-muted-foreground uppercase tracking-tighter max-w-xs">
               The history they taught you — and the history they buried. Original writing. Zero copyright risk.
@@ -53,7 +53,7 @@ const SiteFooter = () => {
 
         <div className="border-t border-border pt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <p className="font-mono text-[11px] text-muted-foreground uppercase tracking-tighter">
-            © 2026 Signal History. All content is original writing.
+            © 2026 Hidden Facts. All content is original writing.
           </p>
           <div className="flex items-center gap-6">
             <Link href="/privacy" className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground hover:text-primary transition-colors">Privacy</Link>

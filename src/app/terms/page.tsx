@@ -32,7 +32,7 @@ export default function TermsPage() {
 
           <div className="prose-legal">
             <Section title="1. Acceptance of Terms">
-              <p>By accessing or using Signal ("the Service", "we", "our", "us"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, please do not use the Service.</p>
+              <p>By accessing or using Hidden Facts ("the Service", "we", "our", "us"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, please do not use the Service.</p>
               <p>We reserve the right to update or modify these Terms at any time. Continued use of the Service after changes are posted constitutes your acceptance of the revised Terms.</p>
             </Section>
 
@@ -42,7 +42,7 @@ export default function TermsPage() {
             </Section>
 
             <Section title="3. Intellectual Property">
-              <p>All original content published on Signal — including articles, headlines, summaries, and editorial text — is the intellectual property of Signal and is protected by applicable copyright laws.</p>
+              <p>All original content published on Hidden Facts — including articles, headlines, summaries, and editorial text — is the intellectual property of Signal and is protected by applicable copyright laws.</p>
               <p>You may share individual article links for personal, non-commercial purposes. You may <strong>not</strong>:</p>
               <ul>
                 <li>Reproduce, copy, or republish full articles without prior written permission.</li>
@@ -68,7 +68,7 @@ export default function TermsPage() {
 
             <Section title="5. Content Accuracy and Disclaimer">
               <p>Signal strives to publish accurate, timely, and well-researched content. However, we make no warranties or representations regarding the accuracy, completeness, reliability, or suitability of any content on the Service.</p>
-              <p>News and information published on Signal is for general informational purposes only and should not be relied upon as professional advice — including but not limited to legal, financial, medical, or investment advice.</p>
+              <p>News and information published on Hidden Facts is for general informational purposes only and should not be relied upon as professional advice — including but not limited to legal, financial, medical, or investment advice.</p>
               <p>We are not responsible for the content of any external websites linked from the Service.</p>
             </Section>
 
@@ -113,7 +113,7 @@ export default function TermsPage() {
             <Section title="14. Contact Us">
               <p>If you have any questions about these Terms, please contact us:</p>
               <div className="mt-3 p-4 bg-muted rounded-xl font-mono text-sm">
-                <p><strong>Signal</strong></p>
+                <p><strong>Hidden Facts</strong></p>
                 <p>Email: <a href="mailto:shivamkumarsingh8544@gmail.com" className="text-primary hover:underline">shivamkumarsingh8544@gmail.com</a></p>
               </div>
             </Section>

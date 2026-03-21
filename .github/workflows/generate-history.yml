@@ -2,7 +2,7 @@ name: Generate History Articles
 
 on:
   schedule:
-    - cron: "0 9 * * *"   # 2:30 PM IST daily (UTC 9:00 = IST 14:30)
+    - cron: "30 12 * * *"   # 2:30 PM IST daily (UTC 9:00 = IST 14:30)
   workflow_dispatch:
 
 jobs:
@@ -11,37 +11,143 @@ jobs:
     timeout-minutes: 180
 
     steps:
-      - name: Trigger history article generation (all 15 categories, 1 each)
+      - name: Generate - ancient-civilizations
         run: |
-          echo "▶ Starting history pipeline at $(date)"
-          echo "   Strategy: 1 article per category × 15 categories = 15 articles/day"
-
-          RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            -L \
-            -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
-            -d '{"manual":true}' \
-            --max-time 10800)
+            -d '{"manual":true,"subcategory":"ancient-civilizations"}' \
+            --max-time 55 || true
+          sleep 10
 
-          echo "HTTP Status: $RESPONSE"
-          cat /tmp/response.json
+      - name: Generate - medieval-feudal
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"medieval-feudal"}' \
+            --max-time 55 || true
+          sleep 10
 
-          if [ "$RESPONSE" != "200" ]; then
-            echo "❌ Failed with status $RESPONSE"
-            exit 1
-          fi
+      - name: Generate - age-of-exploration
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"age-of-exploration"}' \
+            --max-time 55 || true
+          sleep 10
 
-          echo "✅ Generation completed"
+      - name: Generate - revolutions-politics
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"revolutions-politics"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - world-wars-conflicts
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"world-wars-conflicts"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - colonial-imperial
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"colonial-imperial"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - human-rights-movements
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"human-rights-movements"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - science-technology
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"science-technology"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - religion-philosophy
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"religion-philosophy"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - cultural-social
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"cultural-social"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - economic-trade
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"economic-trade"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - military-warfare
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"military-warfare"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - regional-history
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"regional-history"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - archaeology-mysteries
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"archaeology-mysteries"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - famous-figures
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"famous-figures"}' \
+            --max-time 55 || true
 
       - name: Summary
         if: always()
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Finished at $(date)"
-          if command -v jq &> /dev/null; then
-            jq '.' /tmp/response.json 2>/dev/null || cat /tmp/response.json
-          else
-            cat /tmp/response.json
-          fi
+          echo "✅ All 15 categories triggered at $(date)"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

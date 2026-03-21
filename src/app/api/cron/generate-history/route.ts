@@ -21,7 +21,7 @@ const ARTICLES_PER_CATEGORY  = 1;
 
 const AUTHOR = {
   name:    'Arjun Mehta',
-  tagline: 'Senior Historian & Correspondent, Signal History',
+  tagline: 'Senior Historian & Correspondent, Hidden Facts',
   bio: `Historian and investigative journalist. Sharp, no-nonsense style. Covers both famous events
 AND hidden chapters. 100% original writing. Ends every article with a one-liner that sticks.`,
 };

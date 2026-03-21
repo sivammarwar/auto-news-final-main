@@ -39,7 +39,7 @@ export default function PrivacyPage() {
 
           <div className="prose-legal">
             <Section title="1. Introduction">
-              <p>Welcome to Signal ("we", "our", or "us"). We are committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website (the "Service").</p>
+              <p>Welcome to Hidden Facts ("we", "our", or "us"). We are committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website (the "Service").</p>
               <p>Please read this policy carefully. If you disagree with its terms, please discontinue use of the Service.</p>
             </Section>
 
@@ -88,7 +88,7 @@ export default function PrivacyPage() {
               <ul>
                 <li><strong>Service providers:</strong> Trusted third-party vendors who assist us in operating our website and conducting our business, subject to confidentiality agreements.</li>
                 <li><strong>Legal requirements:</strong> If required by law, court order, or governmental authority.</li>
-                <li><strong>Protection of rights:</strong> To protect the rights, property, or safety of Signal, our users, or the public.</li>
+                <li><strong>Protection of rights:</strong> To protect the rights, property, or safety of Hidden Facts, our users, or the public.</li>
                 <li><strong>Business transfers:</strong> In connection with a merger, acquisition, or sale of assets.</li>
               </ul>
             </Section>
@@ -140,7 +140,7 @@ export default function PrivacyPage() {
             <Section title="13. Contact Us">
               <p>If you have any questions, concerns, or requests regarding this Privacy Policy, please contact us:</p>
               <div className="mt-3 p-4 bg-muted rounded-xl font-mono text-sm">
-                <p><strong>Signal</strong></p>
+                <p><strong>Hidden Facts</strong></p>
                 <p>Email: <a href="mailto:shivamkumarsingh8544@gmail.com" className="text-primary hover:underline">shivamkumarsingh8544@gmail.com</a></p>
               </div>
             </Section>

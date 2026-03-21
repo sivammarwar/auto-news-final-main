@@ -60,7 +60,7 @@ export default function ContactPage() {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
-    const subject = encodeURIComponent(`[Signal] ${CONTACT_REASONS.find(r => r.value === form.reason)?.label ?? 'Enquiry'} — ${form.name}`);
+    const subject = encodeURIComponent(`[Hidden Facts] ${CONTACT_REASONS.find(r => r.value === form.reason)?.label ?? 'Enquiry'} — ${form.name}`);
     const body    = encodeURIComponent(`Name: ${form.name}\nEmail: ${form.email}\nReason: ${CONTACT_REASONS.find(r => r.value === form.reason)?.label}\n\n${form.message}`);
     window.location.href = `mailto:shivamkumarsingh8544@gmail.com?subject=${subject}&body=${body}`;
     setSubmitted(true);
@@ -148,7 +148,7 @@ export default function ContactPage() {
               </div>
               <div>
                 <p className="font-bold text-foreground mb-1">Copyright and content removal</p>
-                <p>If you believe any content on Signal infringes your copyright, please contact us with details of the content in question and your ownership claim. We will respond within 48 hours.</p>
+                <p>If you believe any content on Hidden Facts infringes your copyright, please contact us with details of the content in question and your ownership claim. We will respond within 48 hours.</p>
               </div>
               <div>
                 <p className="font-bold text-foreground mb-1">Privacy requests</p>

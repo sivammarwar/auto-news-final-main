@@ -12,8 +12,8 @@ export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
 
   title: {
-    default:  'Signal History',
-    template: '%s | Signal History',
+    default:  'Hidden Facts',
+    template: '%s | Hidden Facts',
   },
 
   description:
@@ -22,15 +22,15 @@ export const metadata: Metadata = {
   keywords: [
     'world history', 'history articles', 'ancient civilizations', 'medieval history',
     'historical mysteries', 'famous figures history', 'military history',
-    'colonialism history', 'science history', 'Signal History',
+    'colonialism history', 'science history', 'Hidden Facts',
   ],
 
-  authors: [{ name: 'Signal History' }],
+  authors: [{ name: 'Hidden Facts' }],
 
   openGraph: {
     type:        'website',
-    siteName:    'Signal History',
-    title:       'Signal History',
+    siteName:    'Hidden Facts',
+    title:       'Hidden Facts',
     description: 'The history they taught you — and the history they buried.',
     url:         BASE_URL,
     images: [
@@ -38,14 +38,14 @@ export const metadata: Metadata = {
         url:    '/og-default.jpg',
         width:  1200,
         height: 630,
-        alt:    'Signal History',
+        alt:    'Hidden Facts',
       },
     ],
   },
 
   twitter: {
     card:        'summary_large_image',
-    title:       'Signal History',
+    title:       'Hidden Facts',
     description: 'The history they taught you — and the history they buried.',
     images:      ['/og-default.jpg'],
   },

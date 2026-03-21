@@ -61,7 +61,7 @@ const db = supabase as any;
 // ════════════════════════════════════════════════════════════════════════════
 const AUTHOR = {
   name:    'Arjun Mehta',
-  tagline: 'Senior Historian & Correspondent, Signal History',
+  tagline: 'Senior Historian & Correspondent, Hidden Facts',
   bio:
     `Arjun Mehta is a historian and investigative journalist with 11 years of experience ` +
     `covering world history, archaeology, and forgotten civilizations. ` +
@@ -840,7 +840,7 @@ export default function AdminPanel() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">📜 Signal History — Admin Panel</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">📜 Hidden Facts — Admin Panel</h1>
         <p className="text-gray-500 text-sm mt-1">
           {Object.keys(HISTORY_CATEGORIES).length} categories · {ARTICLES_PER_CATEGORY} articles per run · Topics sourced from your pool
         </p>

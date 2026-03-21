@@ -54,7 +54,7 @@ export default function AdminPage() {
       <div className="sticky top-0 z-50 bg-gray-900 text-white px-4 sm:px-6 h-11 flex items-center justify-between border-b border-gray-700">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold tracking-tight">
-            📜 Signal History
+            📜 Hidden Facts
           </span>
           <span className="text-xs text-gray-400 hidden sm:inline">
             · Admin panel
