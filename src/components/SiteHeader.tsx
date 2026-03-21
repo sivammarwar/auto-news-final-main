@@ -54,13 +54,7 @@ const SiteHeader = () => {
       <header className="sticky top-0 z-50 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
         <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-4">
 
-          {/* Logo
-              CLS FIX: Added explicit width/height attributes matching the actual
-              displayed size (102×112 per Lighthouse). This lets the browser reserve
-              the correct space before the image loads, eliminating the unsized-image
-              layout shift. Also switched to WebP (convert logo.png → logo.webp at
-              squoosh.app — saves ~100 KB). Keep object-contain so it stays crisp.
-          */}
+          {/* Logo */}
           <Link
             href="/"
             className="shrink-0 flex items-center gap-3 text-black"
@@ -91,6 +85,15 @@ const SiteHeader = () => {
               }`}
             >
               Home
+            </Link>
+
+            <Link
+              href="/about"
+              className={`font-mono text-[11px] uppercase tracking-[0.15em] transition-colors hover:text-primary ${
+                pathname === '/about' ? 'text-primary font-bold' : 'text-muted-foreground'
+              }`}
+            >
+              About
             </Link>
 
             <div className="relative" ref={dropdownRef}>
@@ -184,6 +187,15 @@ const SiteHeader = () => {
                   }`}
                 >
                   <span className="text-base">🏠</span> Home
+                </Link>
+
+                <Link
+                  href="/about"
+                  className={`flex items-center gap-3 px-3 py-3 rounded-xl mb-2 font-mono text-[11px] uppercase tracking-[0.1em] transition-colors ${
+                    pathname === '/about' ? 'bg-muted text-primary font-bold' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <span className="text-base">📖</span> About
                 </Link>
 
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground px-3 py-2">
