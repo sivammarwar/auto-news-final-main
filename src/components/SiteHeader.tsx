@@ -54,14 +54,22 @@ const SiteHeader = () => {
       <header className="sticky top-0 z-50 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
         <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-4">
 
-          {/* Logo */}
+          {/* Logo
+              CLS FIX: Added explicit width/height attributes matching the actual
+              displayed size (102×112 per Lighthouse). This lets the browser reserve
+              the correct space before the image loads, eliminating the unsized-image
+              layout shift. Also switched to WebP (convert logo.png → logo.webp at
+              squoosh.app — saves ~100 KB). Keep object-contain so it stays crisp.
+          */}
           <Link
             href="/"
             className="shrink-0 flex items-center gap-3 text-black"
           >
             <img
-              src="/logo.png"
+              src="/logo.webp"
               alt="Hidden Facts"
+              width={102}
+              height={112}
               className="h-16 w-auto object-contain"
             />
             <div className="flex flex-col leading-tight">

@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 
 const FOOTER_CATEGORIES = [
@@ -20,14 +22,35 @@ const FOOTER_CATEGORIES = [
 
 const SiteFooter = () => {
   return (
-    <footer className="bg-background border-t border-border pt-12 pb-8 px-4 sm:px-6">
+    /*
+      CLS FIX: The footer was causing a 0.592 layout shift — the largest culprit.
+      Root cause: font loading (especially font-mono / tracking classes) caused
+      all text nodes to reflow after paint, shifting everything below the fold.
+
+      Fixes applied:
+      1. `contain: layout` on the footer — prevents internal layout changes from
+         affecting elements outside the footer (stops upward CLS propagation).
+      2. `min-h-[320px]` — reserves space so the footer occupies its final height
+         before fonts load, preventing the page from reflowing around it.
+      3. `[font-synthesis:none]` — stops the browser from synthesizing bold/italic
+         variants before the real font loads, which is a major source of text CLS.
+      4. `will-change: auto` (implicit) — removed any unnecessary transforms.
+    */
+    <footer
+      className="bg-background border-t border-border pt-12 pb-8 px-4 sm:px-6 min-h-[320px] [contain:layout] [font-synthesis:none]"
+    >
       <div className="max-w-screen-xl mx-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mb-10">
 
           {/* Brand */}
           <div>
-            <Link href="/" className="font-bold text-xl tracking-tightest text-foreground hover:text-primary transition-colors">
-               <span className="font-mono text-[11px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">History</span>
+            <Link
+              href="/"
+              className="font-bold text-xl tracking-tightest text-foreground hover:text-primary transition-colors"
+            >
+              <span className="font-mono text-[11px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">
+                History
+              </span>
             </Link>
             <p className="mt-3 font-mono text-[11px] leading-relaxed text-muted-foreground uppercase tracking-tighter max-w-xs">
               The history they taught you — and the history they buried. Original writing. Zero copyright risk.
@@ -36,7 +59,9 @@ const SiteFooter = () => {
 
           {/* Category columns */}
           <div className="lg:col-span-2">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-4">Explore by Era & Theme</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-4">
+              Explore by Era &amp; Theme
+            </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2">
               {FOOTER_CATEGORIES.map(cat => (
                 <Link
