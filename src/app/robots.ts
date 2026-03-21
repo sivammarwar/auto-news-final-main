@@ -7,17 +7,21 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
+        // Explicitly allow AdSense crawler — required for verification + ads
+        userAgent: 'Mediapartners-Google',
+        allow: '/',
+      },
+      {
         userAgent: '*',
         allow: '/',
         disallow: [
-          '/api/',          // block all API routes from crawlers
-          '/admin',         // block admin panel
-          '/_next/',        // Next.js internals
-          '/static/',       // static assets
+          '/api/',
+          '/admin',
+          '/_next/',
+          '/static/',
         ],
       },
       {
-        // Block AI training crawlers
         userAgent: [
           'GPTBot',
           'ChatGPT-User',

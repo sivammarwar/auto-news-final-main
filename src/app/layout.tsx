@@ -1,4 +1,3 @@
-// src/app/layout.tsx
 import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/components/Providers';
 import { Analytics } from '@vercel/analytics/next';
@@ -21,6 +20,9 @@ export const metadata: Metadata = {
     'colonialism history', 'science history', 'Hidden Facts',
   ],
   authors: [{ name: 'Hidden Facts' }],
+  verification: {
+    google: 'ca-pub-7368509971017880',
+  },
   openGraph: {
     type:        'website',
     siteName:    'Hidden Facts',
@@ -63,11 +65,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href="https://images.pexels.com" />
         <link rel="preconnect" href="https://gybxyzdjvptlitymvxlc.supabase.co" crossOrigin="" />
         <link rel="dns-prefetch" href="https://gybxyzdjvptlitymvxlc.supabase.co" />
-
-        {/* Preconnect to AdSense for faster script load */}
         <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com" />
-
         <style>{`
           *, *::before, *::after {
             font-synthesis: none;
@@ -79,12 +78,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </Providers>
         <Analytics />
-
-        {/*
-          AdSense script — placed here instead of <head> so it loads AFTER
-          your content. strategy="afterInteractive" means it won't block
-          rendering or hurt your LCP score.
-        */}
         <Script
           id="adsense-script"
           async
