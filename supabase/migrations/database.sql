@@ -700,3 +700,45 @@ CREATE POLICY "Anon can update settings"
   ON public.settings FOR UPDATE
   USING (true)
   WITH CHECK (true);
+
+SELECT policyname, cmd FROM pg_policies WHERE tablename = 'settings';
+
+-- Enable RLS on topic_pool (may already be enabled)
+ALTER TABLE public.topic_pool ENABLE ROW LEVEL SECURITY;
+
+-- Drop if exists to avoid conflicts
+DROP POLICY IF EXISTS "Anon can read topic_pool"   ON public.topic_pool;
+DROP POLICY IF EXISTS "Anon can insert topic_pool"  ON public.topic_pool;
+DROP POLICY IF EXISTS "Anon can update topic_pool"  ON public.topic_pool;
+DROP POLICY IF EXISTS "Anon can delete topic_pool"  ON public.topic_pool;
+
+-- Create full anon access policies
+CREATE POLICY "Anon can read topic_pool"
+  ON public.topic_pool FOR SELECT USING (true);
+
+CREATE POLICY "Anon can insert topic_pool"
+  ON public.topic_pool FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Anon can update topic_pool"
+  ON public.topic_pool FOR UPDATE USING (true) WITH CHECK (true);
+
+CREATE POLICY "Anon can delete topic_pool"
+  ON public.topic_pool FOR DELETE USING (true);
+
+-- Verify
+SELECT policyname, cmd FROM pg_policies WHERE tablename = 'topic_pool';
+
+-- 1. Check if topic_pool has any data at all
+SELECT COUNT(*) FROM public.topic_pool;
+
+-- 2. Check what subcategory values exist
+SELECT subcategory, COUNT(*) as total, SUM(CASE WHEN is_used = false THEN 1 ELSE 0 END) as unused
+FROM public.topic_pool
+GROUP BY subcategory
+ORDER BY subcategory;
+
+-- 3. Check RLS policies
+SELECT policyname, cmd, qual FROM pg_policies WHERE tablename = 'topic_pool';
+
+-- 4. Check if RLS is enabled
+SELECT relname, relrowsecurity FROM pg_class WHERE relname = 'topic_pool';

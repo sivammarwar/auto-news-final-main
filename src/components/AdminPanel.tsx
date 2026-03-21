@@ -53,11 +53,8 @@ interface TopicPoolCount {
   total: number;
 }
 
-// ── topic_pool is not in generated Supabase types yet.
-// Cast supabase to any only for topic_pool queries.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-// topic_pool is now in the generated Supabase types — no cast needed.
-const db = supabase;
+const db = supabase as any;
 
 // ════════════════════════════════════════════════════════════════════════════
 // AUTHOR PERSONA
@@ -422,6 +419,7 @@ export default function AdminPanel() {
   const [savingTopics, setSavingTopics]       = useState(false);
   const [topicSaveMsg, setTopicSaveMsg]       = useState<string | null>(null);
   const [showTopicPool, setShowTopicPool]     = useState(false);
+  const [topicDebugMsg, setTopicDebugMsg]     = useState<string | null>(null);
 
   const logContainerRef = useRef<HTMLDivElement>(null);
   const stopRef         = useRef(false);
@@ -438,17 +436,56 @@ export default function AdminPanel() {
     setGenLogs(prev => [...prev.slice(-400), { id: Date.now() + Math.random(), message, type, ts: nowTS() }]);
   }, []);
 
-  // ── Uses db (any cast) because topic_pool not in Supabase types ──────────
+  // ── TOPIC POOL COUNTS — with full debug logging ───────────────────────────
   const fetchTopicPoolCounts = async () => {
-    const { data, error: e } = await db.from('topic_pool').select('subcategory, is_used');
-    if (e || !data) return;
-    const counts: Record<string, { unused: number; total: number }> = {};
-    for (const row of data) {
-      if (!counts[row.subcategory]) counts[row.subcategory] = { unused: 0, total: 0 };
-      counts[row.subcategory].total++;
-      if (!row.is_used) counts[row.subcategory].unused++;
+    console.log('[topic_pool] Starting paginated fetch...');
+    setTopicDebugMsg('⏳ Fetching topic pool counts...');
+  
+    try {
+      const allData: { subcategory: string; is_used: boolean }[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      let hasMore = true;
+  
+      while (hasMore) {
+        const { data, error: e } = await db
+          .from('topic_pool')
+          .select('subcategory, is_used')
+          .range(from, from + pageSize - 1);
+  
+        if (e) {
+          const msg = `❌ topic_pool fetch error: ${e.message}`;
+          console.error('[topic_pool]', msg);
+          setTopicDebugMsg(msg);
+          return;
+        }
+  
+        if (!data || data.length === 0) break;
+  
+        allData.push(...data);
+        console.log(`[topic_pool] Fetched ${allData.length} rows so far...`);
+  
+        hasMore = data.length === pageSize;
+        from += pageSize;
+      }
+  
+      console.log(`[topic_pool] Total rows fetched: ${allData.length}`);
+      setTopicDebugMsg(`✅ Loaded ${allData.length} topic rows successfully`);
+  
+      const counts: Record<string, { unused: number; total: number }> = {};
+      for (const row of allData) {
+        if (!counts[row.subcategory]) counts[row.subcategory] = { unused: 0, total: 0 };
+        counts[row.subcategory].total++;
+        if (!row.is_used) counts[row.subcategory].unused++;
+      }
+      setTopicPoolCounts(Object.entries(counts).map(([subcategory, v]) => ({ subcategory, ...v })));
+      setTimeout(() => setTopicDebugMsg(null), 5000);
+  
+    } catch (err: any) {
+      const msg = `❌ Unexpected error: ${err?.message ?? String(err)}`;
+      console.error('[topic_pool] catch:', err);
+      setTopicDebugMsg(msg);
     }
-    setTopicPoolCounts(Object.entries(counts).map(([subcategory, v]) => ({ subcategory, ...v })));
   };
 
   const fetchArticles = async () => {
@@ -465,7 +502,6 @@ export default function AdminPanel() {
     finally { setLoading(false); }
   };
 
-  // ── Uses db (any cast) because topic_pool not in Supabase types ──────────
   const handleSaveTopics = async () => {
     const lines = topicInputText.split('\n').map(l => l.trim()).filter(l => l.length > 10);
     if (lines.length === 0) { setTopicSaveMsg('⚠️ No valid topics found. Enter one topic per line.'); return; }
@@ -475,7 +511,9 @@ export default function AdminPanel() {
       topic_key: topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120),
       is_used: false,
     }));
+    console.log('[topic_pool] Saving rows:', rows);
     const { error: e } = await db.from('topic_pool').upsert(rows, { onConflict: 'subcategory,topic_key', ignoreDuplicates: true });
+    console.log('[topic_pool] Save result error:', e);
     if (e) {
       setTopicSaveMsg(`❌ Save failed: ${e.message}`);
     } else {
@@ -487,7 +525,6 @@ export default function AdminPanel() {
     setTimeout(() => setTopicSaveMsg(null), 4000);
   };
 
-  // ── Uses db (any cast) because topic_pool not in Supabase types ──────────
   const pickTopicsFromDB = async (subcategory: string, count: number): Promise<{ id: number; topic: string }[]> => {
     const { data, error: e } = await db
       .from('topic_pool').select('id, topic')
@@ -497,7 +534,6 @@ export default function AdminPanel() {
     return data as { id: number; topic: string }[];
   };
 
-  // ── Uses db (any cast) because topic_pool not in Supabase types ──────────
   const markTopicUsed = async (id: number): Promise<void> => {
     await db.from('topic_pool').update({ is_used: true }).eq('id', id);
   };
@@ -812,6 +848,18 @@ export default function AdminPanel() {
 
       <SchedulerPanel />
 
+      {/* ── DEBUG BANNER — shows topic_pool fetch status ── */}
+      {topicDebugMsg && (
+        <div className={`mb-4 p-3 rounded-lg border text-sm font-mono flex items-center justify-between gap-3 ${
+          topicDebugMsg.startsWith('✅') ? 'bg-green-50 border-green-300 text-green-800' :
+          topicDebugMsg.startsWith('❌') ? 'bg-red-50 border-red-300 text-red-800' :
+          'bg-yellow-50 border-yellow-300 text-yellow-800'
+        }`}>
+          <span>{topicDebugMsg}</span>
+          <button onClick={() => setTopicDebugMsg(null)} className="text-gray-400 hover:text-gray-600 shrink-0">✕</button>
+        </div>
+      )}
+
       {lowTopicCategories.length > 0 && (
         <div className="mb-4 p-4 bg-orange-50 border border-orange-300 rounded-lg">
           <p className="font-bold text-orange-800 text-sm mb-1">⚠️ Low topic pool — add more topics soon:</p>
@@ -836,6 +884,13 @@ export default function AdminPanel() {
             <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full font-medium">
               {topicPoolCounts.reduce((s, c) => s + c.unused, 0)} unused topics across all categories
             </span>
+            <button
+              onClick={e => { e.stopPropagation(); fetchTopicPoolCounts(); }}
+              className="ml-1 text-blue-500 hover:text-blue-700"
+              title="Refresh topic counts"
+            >
+              <RefreshCw size={13} />
+            </button>
           </div>
           <span className="text-blue-500 text-sm">{showTopicPool ? '▲ Hide' : '▼ Show'}</span>
         </div>
