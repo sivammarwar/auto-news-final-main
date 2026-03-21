@@ -14,9 +14,10 @@ const GROQ_TIMEOUT_MS        = 40_000;
 const INTER_ARTICLE_PAUSE_MS = 8_000;
 const MAX_RETRIES            = 5;
 const AUTO_PUBLISH_SCORE     = 7.5;
-const TARGET_IMAGES          = 6;
+const TARGET_IMAGES          = 2;   // ← changed from 6
 const MIN_IMAGES_TO_PUBLISH  = 2;
 const IMAGE_MIN_WIDTH        = 800;
+const ARTICLES_PER_CATEGORY  = 1;   // ← changed from 2
 
 const AUTHOR = {
   name:    'Arjun Mehta',
@@ -27,7 +28,6 @@ AND hidden chapters. 100% original writing. Ends every article with a one-liner 
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-// Always snaps to the exact configured UTC hour, never drifts
 function computeNextRun(hourUtc: number): string {
   const now  = new Date();
   const next = new Date();
@@ -36,7 +36,6 @@ function computeNextRun(hourUtc: number): string {
   return next.toISOString();
 }
 
-// ─── Settings helpers ─────────────────────────────────────────────────────────
 async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Promise<string> {
   const { data } = await db.from('settings').select('value').eq('key', key).single();
   return data?.value ?? '';
@@ -46,7 +45,6 @@ async function setSetting(db: ReturnType<typeof getSupabase>, key: string, value
   await db.from('settings').upsert({ key, value, updated_at: new Date().toISOString() });
 }
 
-// ─── Topic Pool helpers ───────────────────────────────────────────────────────
 async function pickTopicsFromPool(
   db: ReturnType<typeof getSupabase>,
   subcategory: string,
@@ -67,19 +65,6 @@ async function markTopicUsed(db: ReturnType<typeof getSupabase>, id: number): Pr
   await db.from('topic_pool').update({ is_used: true }).eq('id', id);
 }
 
-async function getUnusedTopicCount(
-  db: ReturnType<typeof getSupabase>,
-  subcategory: string
-): Promise<number> {
-  const { count } = await db
-    .from('topic_pool')
-    .select('id', { count: 'exact', head: true })
-    .eq('subcategory', subcategory)
-    .eq('is_used', false);
-  return count ?? 0;
-}
-
-// ─── Groq ─────────────────────────────────────────────────────────────────────
 async function groqRequest(
   messages: { role: string; content: string }[],
   maxTokens: number
@@ -118,7 +103,6 @@ function extractJSON<T>(raw: string | null): T | null {
   try { return JSON.parse(m?.[0] ?? cleaned) as T; } catch { return null; }
 }
 
-// ─── Images ───────────────────────────────────────────────────────────────────
 async function fetchPexels(query: string, count = 2): Promise<any[]> {
   const key = process.env.PEXELS_API_KEY;
   if (!key) return [];
@@ -147,7 +131,7 @@ async function saveImages(
   const photos: any[] = [];
   const seen = new Set<string>();
 
-  for (const q of queries.slice(0, 6)) {
+  for (const q of queries.slice(0, 4)) {
     if (photos.length >= TARGET_IMAGES) break;
     const results = await fetchPexels(q, 2);
     for (const p of results) {
@@ -181,10 +165,7 @@ export async function POST(req: NextRequest) {
 
   const db   = getSupabase();
   const body = await req.json().catch(() => ({}));
-
-  const isManual: boolean                = body?.manual === true;
-  const targetSubcategory: string | null = body?.subcategory ?? null;
-  const articlesPerRun: number           = body?.articlesPerRun ?? 2;
+  const isManual: boolean = body?.manual === true;
 
   // ── Schedule gate (skipped for manual triggers) ───────────────────────────
   if (!isManual) {
@@ -192,14 +173,11 @@ export async function POST(req: NextRequest) {
     if (enabled !== 'true') {
       return NextResponse.json({ success: true, skipped: true, reason: 'Schedule disabled' }, { status: 200 });
     }
-
     const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '23', 10);
     const currentHour    = new Date().getUTCHours();
-
     if (currentHour !== configuredHour) {
       return NextResponse.json({
-        success: true,
-        skipped: true,
+        success: true, skipped: true,
         reason: `Not scheduled hour. Configured: ${configuredHour}:00 UTC, Current: ${currentHour}:00 UTC`,
       }, { status: 200 });
     }
@@ -216,50 +194,23 @@ export async function POST(req: NextRequest) {
   try {
     const allKeys = Object.keys(HISTORY_CATEGORIES);
 
-    // ── Determine which subcategory to write for ──────────────────────────
-    let targetKeys: string[];
-
-    if (targetSubcategory && HISTORY_CATEGORIES[targetSubcategory]) {
-      targetKeys = [targetSubcategory];
-    } else {
-      const categoriesWithTopics: string[] = [];
-      for (const key of allKeys) {
-        const count = await getUnusedTopicCount(db, key);
-        if (count > 0) categoriesWithTopics.push(key);
-      }
-
-      if (categoriesWithTopics.length === 0) {
-        await setSetting(db, 'schedule_status', 'idle');
-        return NextResponse.json({
-          success:   true,
-          reason:    'All topic pools are empty. Add more topics in the Admin Panel.',
-          total:     results.total,
-          published: results.published,
-          drafts:    results.drafts,
-          skipped:   true,
-          errors:    results.errors,
-          details:   results.details,
-        }, { status: 200 });
-      }
-
-      const pick = categoriesWithTopics[Math.floor(Math.random() * categoriesWithTopics.length)];
-      targetKeys = [pick];
-    }
-
-    // ── Write articles for each target subcategory ────────────────────────
-    for (const subcatKey of targetKeys) {
+    // ── Run ALL 15 categories, 1 article each ─────────────────────────────
+    for (const subcatKey of allKeys) {
       const catConfig    = HISTORY_CATEGORIES[subcatKey];
-      const pickedTopics = await pickTopicsFromPool(db, subcatKey, articlesPerRun);
+      const pickedTopics = await pickTopicsFromPool(db, subcatKey, ARTICLES_PER_CATEGORY);
 
       if (pickedTopics.length === 0) {
         results.skipped++;
         results.details.push({ subcategory: subcatKey, title: '', status: 'no_topics_in_pool' });
+        console.log(`⚠️  [${subcatKey}] No unused topics — skipping`);
         continue;
       }
 
       for (const { id: topicId, topic } of pickedTopics) {
         try {
+          console.log(`\n✍️  Writing: "${topic}" [${subcatKey}]`);
           await sleep(2000);
+
           const part1 = await groqRequest([
             {
               role: 'system',
@@ -300,13 +251,13 @@ export async function POST(req: NextRequest) {
           const metaRaw = await groqRequest([
             {
               role: 'system',
-              content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4","q5","q6"] }',
+              content: 'Return ONLY raw valid JSON. Format: { "title": "string", "summary": "string", "score": number, "image_queries": ["q1","q2","q3","q4"] }',
             },
             {
               role: 'user',
               content:
                 `Metadata for: "${topic}"\nPreview: ${fullContent.substring(0, 400)}\n` +
-                `Compelling 10-18 word title, 3-sentence summary, score 0-10, 6 Pexels image queries. Raw JSON only.`,
+                `Compelling 10-18 word title, 3-sentence summary, score 0-10, 4 Pexels image queries. Raw JSON only.`,
             },
           ], 500);
 
@@ -338,6 +289,7 @@ export async function POST(req: NextRequest) {
           results.total++;
 
           const imageCount = await saveImages(db, articleId, title, subcatKey, imgQ);
+          console.log(`   🖼  ${imageCount} images saved`);
 
           if (score >= AUTO_PUBLISH_SCORE && imageCount >= MIN_IMAGES_TO_PUBLISH) {
             const { data: verify } = await db.from('articles').select('raw_content, image_url').eq('id', articleId).single();
@@ -347,13 +299,15 @@ export async function POST(req: NextRequest) {
                 .eq('id', articleId);
               results.published++;
               results.details.push({ subcategory: subcatKey, title, status: `published (score ${score.toFixed(1)})` });
+              console.log(`   🚀 AUTO-PUBLISHED #${articleId} (${score.toFixed(1)}⭐)`);
             } else {
               results.drafts++;
-              results.details.push({ subcategory: subcatKey, title, status: 'draft' });
+              results.details.push({ subcategory: subcatKey, title, status: 'draft (verify failed)' });
             }
           } else {
             results.drafts++;
-            results.details.push({ subcategory: subcatKey, title, status: `draft (score ${score.toFixed(1)})` });
+            const reason = imageCount < MIN_IMAGES_TO_PUBLISH ? `only ${imageCount} images` : `score ${score.toFixed(1)} < ${AUTO_PUBLISH_SCORE}`;
+            results.details.push({ subcategory: subcatKey, title, status: `draft (${reason})` });
           }
 
           await sleep(INTER_ARTICLE_PAUSE_MS);
@@ -365,11 +319,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Use computeNextRun so next run is always at the exact configured hour, never drifts
     const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '23', 10);
     await setSetting(db, 'schedule_status',   'idle');
     await setSetting(db, 'schedule_next_run', computeNextRun(configuredHour));
 
+    console.log(`\n🎉 DONE — ${results.total} written · ${results.published} published · ${results.drafts} drafts · ${results.skipped} skipped`);
     return NextResponse.json({ success: true, ...results }, { status: 200 });
 
   } catch (err: any) {

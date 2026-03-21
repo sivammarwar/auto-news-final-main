@@ -2,36 +2,27 @@ name: Generate History Articles
 
 on:
   schedule:
-    - cron: "0 23 * * *"   # 4:30 AM IST daily (UTC 23:00 = IST 04:30 next day)
+    - cron: "30 8 * * *"   # 4:30 AM IST daily (UTC 23:00 = IST 04:30 next day)
   workflow_dispatch:
     inputs:
-      subcategory:
-        description: "Target subcategory slug e.g. ancient-civilizations (blank = random)"
-        required: false
-        default: ""
       manual:
         description: "Set to true to bypass schedule check"
         required: false
-        default: "false"
+        default: "true"
 
 jobs:
   generate-history:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180   # 3 hours — enough for 15 categories × 1 article
 
     steps:
-      - name: Trigger history article generation
+      - name: Trigger history article generation (all 15 categories, 1 each)
         run: |
-          echo "▶ Pinging generate-history at $(date)"
+          echo "▶ Starting history pipeline at $(date)"
+          echo "   Strategy: 1 article per category × 15 categories = 15 articles/day"
 
-          MANUAL="${{ github.event.inputs.manual || 'false' }}"
-          SUBCAT="${{ github.event.inputs.subcategory }}"
-
-          if [ -n "$SUBCAT" ]; then
-            BODY="{\"manual\":${MANUAL},\"subcategory\":\"${SUBCAT}\"}"
-          else
-            BODY="{\"manual\":${MANUAL}}"
-          fi
+          MANUAL="${{ github.event.inputs.manual || 'true' }}"
+          BODY="{\"manual\":${MANUAL}}"
 
           RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
             -L \
@@ -39,7 +30,7 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
             -d "$BODY" \
-            --max-time 7000)
+            --max-time 10800)
 
           echo "HTTP Status: $RESPONSE"
           cat /tmp/response.json
@@ -51,7 +42,7 @@ jobs:
 
           SKIPPED=$(cat /tmp/response.json | grep -o '"skipped":true' || true)
           if [ -n "$SKIPPED" ]; then
-            echo "⏭ Skipped — schedule disabled"
+            echo "⏭ Skipped — schedule disabled or not the right hour"
           else
             echo "✅ Generation completed"
           fi
@@ -60,6 +51,7 @@ jobs:
         if: always()
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Finished at $(date)"
           if command -v jq &> /dev/null; then
             jq '.' /tmp/response.json 2>/dev/null || cat /tmp/response.json
           else
