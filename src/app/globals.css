@@ -129,19 +129,23 @@
   }
 }
 
-/* ── Article card fade-in animation (replaces framer-motion) ── */
+/* ── Article card fade-in (replaces framer-motion on cards) ── */
 @keyframes fadein-up {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .card-fadein {
   opacity: 0;
   animation: fadein-up 0.4s ease forwards;
+}
+
+/* ── Hero section fade-in (replaces framer-motion on hero) ── */
+@keyframes fadein-hero {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hero-fadein {
+  animation: fadein-hero 0.6s ease forwards;
 }
