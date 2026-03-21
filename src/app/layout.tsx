@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/components/Providers';
 import { Analytics } from '@vercel/analytics/next';
-import Script from 'next/script';
 import './globals.css';
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
@@ -61,6 +60,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* AdSense account verification */}
         <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
 
+        {/* AdSense script — plain tag avoids Next.js data-nscript warning */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880"
+          crossOrigin="anonymous"
+        />
+
         <link rel="preconnect" href="https://images.pexels.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://images.pexels.com" />
         <link rel="preconnect" href="https://gybxyzdjvptlitymvxlc.supabase.co" crossOrigin="" />
@@ -79,13 +85,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </Providers>
         <Analytics />
-        <Script
-          id="adsense-script"
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-        />
       </body>
     </html>
   );
