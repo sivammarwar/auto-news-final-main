@@ -77,7 +77,7 @@ export async function historyFetchAndSaveImages({
   title,
   subcategory,
   imageQueries = [],
-  targetImages = 6,
+  targetImages = 2,
 }: HistoryImagePipelineParams): Promise<number> {
   const pexelsKey = process.env.PEXELS_API_KEY;
   const allPhotos: HistoryPhoto[] = [];
