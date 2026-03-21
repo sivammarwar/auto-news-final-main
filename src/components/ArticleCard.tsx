@@ -1,16 +1,16 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import Link from 'next/link';
 import { Article } from '@/types/article';
 import { formatDistanceToNow } from 'date-fns';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface ArticleCardProps {
   article: Article;
   index?: number;
 }
 
-// Maps subcategory slug → display label + emoji
 const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
   'ancient-civilizations':  { label: 'Ancient Civilizations',   emoji: '🏛️' },
   'medieval-feudal':        { label: 'Medieval & Feudal',        emoji: '⚔️'  },
@@ -30,18 +30,29 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
 };
 
 const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
-  const timeAgo = formatDistanceToNow(new Date(article.published_date), { addSuffix: true });
+  const router      = useRouter();
+  const timeAgo     = formatDistanceToNow(new Date(article.published_date), { addSuffix: true });
+  const articleHref = `/article/${article.slug ?? article.id}`;
+  const [clicking, setClicking] = useState(false);
 
-  const subcatMeta   = article.subcategory ? SUBCATEGORY_META[article.subcategory] : null;
-  const categoryPath = article.subcategory
+  const subcatMeta    = article.subcategory ? SUBCATEGORY_META[article.subcategory] : null;
+  const categoryPath  = article.subcategory
     ? `/category/${article.subcategory}`
     : `/category/${article.category}`;
   const categoryLabel = subcatMeta
     ? `${subcatMeta.emoji} ${subcatMeta.label}`
     : article.category;
 
-  // Use slug for SEO-friendly URLs, fall back to id for old articles
-  const articleHref = `/article/${article.slug ?? article.id}`;
+  // Flash blue first, then navigate after the flash is visible
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't intercept category link clicks
+    if ((e.target as HTMLElement).closest('a[data-category]')) return;
+    e.preventDefault();
+    setClicking(true);
+    setTimeout(() => {
+      router.push(articleHref);
+    }, 200); // navigate after 200ms so flash is visible
+  };
 
   return (
     <motion.article
@@ -49,7 +60,14 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ delay: index * 0.05, duration: 0.4 }}
-      className="group relative flex flex-col bg-background p-4 sm:p-6 transition-all duration-300 shadow-card hover:shadow-card-hover z-0 hover:z-10"
+      onClick={handleCardClick}
+      className={`
+        group relative flex flex-col p-4 sm:p-6
+        shadow-card hover:shadow-card-hover
+        z-0 hover:z-10 cursor-pointer select-none
+        ${clicking ? 'bg-blue-100 dark:bg-blue-900' : 'bg-background'}
+      `}
+      style={{ transition: 'background-color 0.15s ease' }}
     >
       {article.image_url && (
         <div className="aspect-video overflow-hidden mb-4 rounded-lg">
@@ -63,22 +81,26 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
       )}
 
       <div className="mb-3 flex items-center justify-between gap-2">
-        <Link
+        <a
+          data-category="true"
           href={categoryPath}
+          onClick={e => e.stopPropagation()}
           className="font-mono text-[10px] uppercase tracking-[0.15em] text-primary font-bold hover:underline"
         >
           {categoryLabel}
-        </Link>
+        </a>
         <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground shrink-0">
           {timeAgo}
         </span>
       </div>
 
-      <Link href={articleHref} className="block mb-3">
-        <h2 className="text-base sm:text-lg font-bold leading-snug tracking-tightest text-foreground group-hover:text-primary transition-colors duration-200">
-          {article.title}
-        </h2>
-      </Link>
+      <h2 className={`
+        text-base sm:text-lg font-bold leading-snug tracking-tightest mb-3
+        transition-colors duration-200
+        ${clicking ? 'text-blue-600 dark:text-blue-300' : 'text-foreground group-hover:text-primary'}
+      `}>
+        {article.title}
+      </h2>
 
       <p className="text-sm leading-relaxed text-muted-foreground line-clamp-3 mb-5 flex-1">
         {article.summary}
