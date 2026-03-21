@@ -2,13 +2,8 @@ name: Generate History Articles
 
 on:
   schedule:
-    - cron: "30 8 * * *"   # 4:30 AM IST daily (UTC 23:00 = IST 04:30 next day)
+    - cron: "0 9 * * *"   # 2:00 PM IST daily (UTC 8:30 = IST 14:00)
   workflow_dispatch:
-    inputs:
-      manual:
-        description: "Set to true to bypass schedule check"
-        required: false
-        default: "true"
 
 jobs:
   generate-history:
@@ -21,15 +16,12 @@ jobs:
           echo "▶ Starting history pipeline at $(date)"
           echo "   Strategy: 1 article per category × 15 categories = 15 articles/day"
 
-          MANUAL="${{ github.event.inputs.manual || 'true' }}"
-          BODY="{\"manual\":${MANUAL}}"
-
           RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
             -L \
             -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
-            -d "$BODY" \
+            -d '{"manual":true}' \
             --max-time 10800)
 
           echo "HTTP Status: $RESPONSE"
@@ -40,12 +32,7 @@ jobs:
             exit 1
           fi
 
-          SKIPPED=$(cat /tmp/response.json | grep -o '"skipped":true' || true)
-          if [ -n "$SKIPPED" ]; then
-            echo "⏭ Skipped — schedule disabled or not the right hour"
-          else
-            echo "✅ Generation completed"
-          fi
+          echo "✅ Generation completed"
 
       - name: Summary
         if: always()
