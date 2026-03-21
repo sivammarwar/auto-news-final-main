@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Article } from '@/types/article';
 
 const FIELDS = [
-  'id', 'created_at', 'updated_at', 'title', 'source_url', 'source_name',
+  'id', 'slug', 'created_at', 'updated_at', 'title', 'source_url', 'source_name',
   'summary', 'raw_content', 'category', 'subcategory', 'score', 'image_url',
   'published_date', 'is_published', 'is_draft', 'admin_notes', 'era', 'difficulty',
 ].join(', ');
@@ -47,22 +47,36 @@ export function useArticles(slug?: string, limit = 50) {
   });
 }
 
-export function useArticle(id: string) {
+export function useArticle(slugOrId: string) {
   return useQuery<Article | null>({
-    queryKey: ['article', id],
+    queryKey: ['article', slugOrId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Try slug first (new SEO-friendly URLs)
+      const { data: bySlug, error: slugError } = await supabase
         .from('articles')
         .select(FIELDS)
-        .eq('id', parseInt(id, 10))
+        .eq('slug', slugOrId)
         .eq('is_published', true)
         .single();
 
-      if (error?.code === 'PGRST116') return null;
-      if (error) throw error;
-      return data as unknown as Article;
+      if (bySlug) return bySlug as unknown as Article;
+
+      // Fall back to numeric ID for old links
+      const numericId = parseInt(slugOrId, 10);
+      if (isNaN(numericId)) return null;
+
+      const { data: byId, error: idError } = await supabase
+        .from('articles')
+        .select(FIELDS)
+        .eq('id', numericId)
+        .eq('is_published', true)
+        .single();
+
+      if (idError?.code === 'PGRST116') return null;
+      if (idError) throw idError;
+      return byId as unknown as Article;
     },
-    enabled: !!id,
+    enabled: !!slugOrId,
     staleTime: 10 * 60 * 1000,
   });
 }

@@ -10,9 +10,9 @@ import ArticleCard from '@/components/ArticleCard';
 import ArticleBody from '@/components/ArticleBody';
 import { buildArticleJsonLd } from '@/lib/article-seo';
 
-export const revalidate = 86400; // 24 hours — must be a static number, not an imported constant
+export const revalidate = 86400;
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://yourdomain.com';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
 
 function getSupabase() {
   return createClient(
@@ -39,25 +39,45 @@ const SUBCATEGORY_LABELS: Record<string, { label: string; emoji: string }> = {
   'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
 };
 
+/** Supports both slug (new) and numeric ID (legacy) */
+async function fetchArticle(slug: string) {
+  const db = getSupabase();
+
+  // Try slug first
+  const { data: bySlug } = await db
+    .from('articles')
+    .select('*')
+    .eq('slug', slug)
+    .eq('is_published', true)
+    .single();
+
+  if (bySlug) return { db, article: bySlug };
+
+  // Fall back to numeric ID for old links
+  const id = parseInt(slug, 10);
+  if (isNaN(id)) return { db, article: null };
+
+  const { data: byId } = await db
+    .from('articles')
+    .select('*')
+    .eq('id', id)
+    .eq('is_published', true)
+    .single();
+
+  return { db, article: byId ?? null };
+}
+
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
   const { slug } = await params;
-  const id = parseInt(slug, 10);
-  if (isNaN(id)) return { title: 'Article Not Found' };
-
-  const { data: article } = await getSupabase()
-    .from('articles')
-    .select('id, title, summary, image_url, published_date, updated_at, subcategory, source_name')
-    .eq('id', id)
-    .eq('is_published', true)
-    .single();
+  const { article } = await fetchArticle(slug);
 
   if (!article) return { title: 'Article Not Found' };
 
   const subcatMeta    = SUBCATEGORY_LABELS[article.subcategory ?? ''];
   const categoryLabel = subcatMeta?.label ?? 'History';
-  const url           = `${BASE_URL}/article/${article.id}`;
+  const url           = `${BASE_URL}/article/${article.slug ?? article.id}`;
   const imageUrl      = article.image_url ?? `${BASE_URL}/og-default.jpg`;
   const description   = (article.summary ?? '').slice(0, 160);
 
@@ -98,32 +118,22 @@ export default async function ArticlePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const id = parseInt(slug, 10);
-  if (isNaN(id)) notFound();
-
-  const db = getSupabase();
-
-  const { data: article } = await db
-    .from('articles')
-    .select('*')
-    .eq('id', id)
-    .eq('is_published', true)
-    .single();
+  const { db, article } = await fetchArticle(slug);
 
   if (!article) notFound();
 
   const { data: images } = await db
     .from('article_images')
     .select('id, image_url, alt_text, position, width, height, photographer, photographer_url, image_source, wiki_attribution, wiki_license, wiki_license_url')
-    .eq('article_id', id)
+    .eq('article_id', article.id)
     .order('position', { ascending: true });
 
   const { data: related } = await db
     .from('articles')
-    .select('id, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
+    .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
     .eq('is_published', true)
     .eq('subcategory', article.subcategory ?? 'history')
-    .neq('id', id)
+    .neq('id', article.id)
     .order('score', { ascending: false })
     .limit(4);
 

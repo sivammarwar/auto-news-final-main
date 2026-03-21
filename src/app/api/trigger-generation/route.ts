@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 
-                  (req.headers.get('origin') ?? 'http://localhost:3000');
+                  (req.headers.get('origin') ?? 'https://hiddenhistoryfacts.com');
 
   const res = await fetch(`${baseUrl}/api/cron/generate-history`, {
     method: 'POST',

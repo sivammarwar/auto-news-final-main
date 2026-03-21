@@ -32,7 +32,7 @@ const RSSIcon = () => (
 );
 
 export default function RSSPage() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yourdomain.com';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://hiddenhistoryfacts.com';
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

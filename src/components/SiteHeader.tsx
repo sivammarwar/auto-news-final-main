@@ -57,9 +57,21 @@ const SiteHeader = () => {
           {/* Logo */}
           <Link
             href="/"
-            className="font-bold text-xl tracking-tightest text-foreground hover:text-primary transition-colors shrink-0"
+            className="shrink-0 flex items-center gap-3 text-black"
           >
-            Hidden <span className="font-mono text-[11px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">Facts</span>
+            <img
+              src="/logo.png"
+              alt="Hidden Facts"
+              className="h-16 w-auto object-contain"
+            />
+            <div className="flex flex-col leading-tight">
+              <span className="font-bold text-xl tracking-tight text-foreground">
+                Hidden Facts
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                The History Books Left This Out
+              </span>
+            </div>
           </Link>
 
           {/* Desktop nav */}

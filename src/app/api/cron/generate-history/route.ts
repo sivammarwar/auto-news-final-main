@@ -28,6 +28,36 @@ AND hidden chapters. 100% original writing. Ends every article with a one-liner 
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+/** Generate a URL-safe slug from a title */
+function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')   // remove special chars
+    .replace(/\s+/g, '-')            // spaces to hyphens
+    .replace(/-+/g, '-')             // collapse multiple hyphens
+    .replace(/^-|-$/g, '')           // trim leading/trailing hyphens
+    .substring(0, 100);              // max 100 chars
+}
+
+/** Ensure slug is unique — appends -2, -3 etc. if needed */
+async function uniqueSlug(
+  db: ReturnType<typeof getSupabase>,
+  base: string
+): Promise<string> {
+  let slug = base;
+  let attempt = 1;
+  while (true) {
+    const { data } = await db
+      .from('articles')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle();
+    if (!data) return slug;          // slug is free
+    attempt++;
+    slug = `${base}-${attempt}`;
+  }
+}
+
 async function getSetting(db: ReturnType<typeof getSupabase>, key: string): Promise<string> {
   const { data } = await db.from('settings').select('value').eq('key', key).single();
   return data?.value ?? '';
@@ -181,7 +211,6 @@ export async function POST(req: NextRequest) {
     const allKeys = Object.keys(HISTORY_CATEGORIES);
     console.log(`📋 Running all ${allKeys.length} categories × ${ARTICLES_PER_CATEGORY} article each`);
 
-    // ── Loop ALL 15 categories, 1 article each ────────────────────────────
     for (const subcatKey of allKeys) {
       const catConfig    = HISTORY_CATEGORIES[subcatKey];
       const pickedTopics = await pickTopicsFromPool(db, subcatKey, ARTICLES_PER_CATEGORY);
@@ -257,13 +286,27 @@ export async function POST(req: NextRequest) {
           const score   = Math.min(10, Math.max(0, parseFloat(String(meta?.score ?? 8.0)) || 8.0));
           const imgQ    = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 4);
 
+          // ── Generate unique SEO slug from title ──────────────────────────
+          const baseSlug   = generateSlug(title);
+          const articleSlug = await uniqueSlug(db, baseSlug);
+          console.log(`   🔗 Slug: ${articleSlug}`);
+
           const { data: saved, error: saveErr } = await db.from('articles').insert({
-            title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
-            summary: summary.substring(0, 500), raw_content: fullContent,
-            category: 'history', subcategory: subcatKey, score,
-            era: catConfig.era, difficulty: 'both',
+            title: title.substring(0, 255),
+            slug: articleSlug,                    // ← slug saved here
+            source_url: null,
+            source_name: AUTHOR.name,
+            summary: summary.substring(0, 500),
+            raw_content: fullContent,
+            category: 'history',
+            subcategory: subcatKey,
+            score,
+            era: catConfig.era,
+            difficulty: 'both',
             published_date: new Date().toISOString(),
-            is_draft: true, is_published: false, image_url: null,
+            is_draft: true,
+            is_published: false,
+            image_url: null,
             admin_notes: `Topic: "${topic}" | ${isManual ? 'Manual trigger' : 'Auto cron'}`,
           }).select('id').single();
 
@@ -294,7 +337,7 @@ export async function POST(req: NextRequest) {
                 .eq('id', articleId);
               results.published++;
               results.details.push({ subcategory: subcatKey, title, status: `published (score ${score.toFixed(1)})` });
-              console.log(`   🚀 AUTO-PUBLISHED #${articleId}`);
+              console.log(`   🚀 AUTO-PUBLISHED #${articleId} → /article/${articleSlug}`);
             } else {
               results.drafts++;
               results.details.push({ subcategory: subcatKey, title, status: 'draft (verify failed)' });

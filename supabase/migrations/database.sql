@@ -742,3 +742,28 @@ SELECT policyname, cmd, qual FROM pg_policies WHERE tablename = 'topic_pool';
 
 -- 4. Check if RLS is enabled
 SELECT relname, relrowsecurity FROM pg_class WHERE relname = 'topic_pool';
+
+-- 1. Add slug column
+ALTER TABLE public.articles
+  ADD COLUMN IF NOT EXISTS slug TEXT;
+
+-- 2. Create unique index
+CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_slug
+  ON public.articles(slug)
+  WHERE slug IS NOT NULL;
+
+-- 3. Backfill slugs for all existing articles from their titles
+UPDATE public.articles
+SET slug = lower(
+  regexp_replace(
+    regexp_replace(
+      regexp_replace(title, '[^a-zA-Z0-9\s-]', '', 'g'),  -- remove special chars
+      '\s+', '-', 'g'                                        -- spaces to hyphens
+    ),
+    '-+', '-', 'g'                                           -- collapse multiple hyphens
+  )
+)
+WHERE slug IS NULL AND title IS NOT NULL;
+
+-- 4. Verify
+SELECT id, title, slug FROM public.articles LIMIT 10;

@@ -32,14 +32,16 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
 const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
   const timeAgo = formatDistanceToNow(new Date(article.published_date), { addSuffix: true });
 
-  // Use subcategory for routing if available, otherwise fall back to category
-  const subcatMeta  = article.subcategory ? SUBCATEGORY_META[article.subcategory] : null;
+  const subcatMeta   = article.subcategory ? SUBCATEGORY_META[article.subcategory] : null;
   const categoryPath = article.subcategory
     ? `/category/${article.subcategory}`
     : `/category/${article.category}`;
   const categoryLabel = subcatMeta
     ? `${subcatMeta.emoji} ${subcatMeta.label}`
     : article.category;
+
+  // Use slug for SEO-friendly URLs, fall back to id for old articles
+  const articleHref = `/article/${article.slug ?? article.id}`;
 
   return (
     <motion.article
@@ -72,7 +74,7 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
         </span>
       </div>
 
-      <Link href={`/article/${article.id}`} className="block mb-3">
+      <Link href={articleHref} className="block mb-3">
         <h2 className="text-base sm:text-lg font-bold leading-snug tracking-tightest text-foreground group-hover:text-primary transition-colors duration-200">
           {article.title}
         </h2>
@@ -86,7 +88,6 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
         <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
           {article.source_name}
         </span>
-        {/* Era badge — shown when available */}
         {(article as any).era && (
           <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
             {(article as any).era}

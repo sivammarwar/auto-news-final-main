@@ -27,6 +27,36 @@ AND hidden chapters. 100% original writing. Ends every article with a one-liner 
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// ─── Generate a URL-safe slug from a title ────────────────────────────────────
+function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')   // remove special chars
+    .replace(/\s+/g, '-')            // spaces to hyphens
+    .replace(/-+/g, '-')             // collapse multiple hyphens
+    .replace(/^-|-$/g, '')           // trim leading/trailing hyphens
+    .substring(0, 100);              // max 100 chars
+}
+
+// ─── Ensure slug is unique — appends -2, -3 etc. if needed ───────────────────
+async function uniqueSlug(
+  db: ReturnType<typeof getSupabase>,
+  base: string
+): Promise<string> {
+  let slug = base;
+  let attempt = 1;
+  while (true) {
+    const { data } = await db
+      .from('articles')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle();
+    if (!data) return slug;
+    attempt++;
+    slug = `${base}-${attempt}`;
+  }
+}
+
 // ─── Compute the next wall-clock occurrence of a UTC hour (always future) ────
 function computeNextRun(hourUtc: number): string {
   const now  = new Date();
@@ -318,13 +348,26 @@ export async function POST(req: NextRequest) {
           const score   = Math.min(10, Math.max(0, parseFloat(String(meta?.score ?? 8.0)) || 8.0));
           const imgQ    = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 4);
 
+          // ── Generate unique SEO slug from title ──────────────────────────
+          const baseSlug    = generateSlug(title);
+          const articleSlug = await uniqueSlug(db, baseSlug);
+
           const { data: saved, error: saveErr } = await db.from('articles').insert({
-            title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
-            summary: summary.substring(0, 500), raw_content: fullContent,
-            category: 'history', subcategory: subcatKey, score,
-            era: catConfig.era, difficulty: 'both',
+            title: title.substring(0, 255),
+            slug: articleSlug,                    // ← slug saved here
+            source_url: null,
+            source_name: AUTHOR.name,
+            summary: summary.substring(0, 500),
+            raw_content: fullContent,
+            category: 'history',
+            subcategory: subcatKey,
+            score,
+            era: catConfig.era,
+            difficulty: 'both',
             published_date: new Date().toISOString(),
-            is_draft: true, is_published: false, image_url: null,
+            is_draft: true,
+            is_published: false,
+            image_url: null,
             admin_notes: `Topic: "${topic}" | ${isManual ? 'Manual trigger' : 'Auto cron'}`,
           }).select('id').single();
 
@@ -348,10 +391,10 @@ export async function POST(req: NextRequest) {
                 .update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() })
                 .eq('id', articleId);
               results.published++;
-              results.details.push({ subcategory: subcatKey, title, status: `published (score ${score.toFixed(1)})` });
+              results.details.push({ subcategory: subcatKey, title, status: `published (score ${score.toFixed(1)}) → /article/${articleSlug}` });
             } else {
               results.drafts++;
-              results.details.push({ subcategory: subcatKey, title, status: 'draft' });
+              results.details.push({ subcategory: subcatKey, title, status: 'draft (verify failed)' });
             }
           } else {
             results.drafts++;
@@ -367,8 +410,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── FIX: use computeNextRun so next run is always at the configured hour,
-    //    not 24h from now (which drifts on every execution).
     const configuredHour = parseInt(await getSetting(db, 'schedule_hour_utc') || '2', 10);
     await setSetting(db, 'schedule_status',   'idle');
     await setSetting(db, 'schedule_next_run', computeNextRun(configuredHour));
