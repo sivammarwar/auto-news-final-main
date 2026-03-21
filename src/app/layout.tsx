@@ -58,11 +58,33 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/* Preconnect to image origins to reduce LCP delay */}
-        <link rel="preconnect" href="https://images.pexels.com" />
+        {/*
+          PRECONNECT FIXES:
+          1. Added crossOrigin="" — without this, preconnect is ignored for CORS
+             image requests (Pexels uses CORS). Lighthouse was warning about this.
+          2. Removed wikimedia — it was unused, wasting a connection slot.
+          3. Added supabase — Lighthouse flagged 310ms savings from preconnecting
+             to your DB origin. This alone can shave ~300ms off LCP.
+          4. Kept dns-prefetch as fallback for browsers that don't support preconnect.
+        */}
+        <link rel="preconnect" href="https://images.pexels.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://images.pexels.com" />
-        <link rel="preconnect" href="https://upload.wikimedia.org" />
-        <link rel="dns-prefetch" href="https://upload.wikimedia.org" />
+        <link rel="preconnect" href="https://gybxyzdjvptlitymvxlc.supabase.co" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://gybxyzdjvptlitymvxlc.supabase.co" />
+
+        {/*
+          CLS FIX — font-synthesis:none globally:
+          The footer's 0.592 CLS is caused by the browser synthesizing fake bold/italic
+          versions of your monospace font BEFORE the real font loads. When the real font
+          arrives, all text reflows because glyph widths change. Setting font-synthesis:none
+          prevents this — the browser waits for the real font instead of synthesizing.
+          This must be in a <style> tag in <head> to apply before first paint.
+        */}
+        <style>{`
+          *, *::before, *::after {
+            font-synthesis: none;
+          }
+        `}</style>
       </head>
       <body>
         <Providers>

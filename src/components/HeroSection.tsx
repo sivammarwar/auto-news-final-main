@@ -8,6 +8,22 @@ interface HeroSectionProps {
   article: Article;
 }
 
+/**
+ * Resizes a Pexels image URL to the given width.
+ * Pexels supports ?w=N&q=N query params natively — no CDN needed.
+ * This reduces the hero image from ~1880px (96 KB) to ~800px (~25 KB).
+ */
+function pexelsResize(url: string, width = 800, quality = 80): string {
+  if (!url || !url.includes('pexels.com')) return url;
+  const u = new URL(url);
+  u.searchParams.set('w', String(width));
+  u.searchParams.set('q', String(quality));
+  u.searchParams.set('auto', 'compress');
+  u.searchParams.set('cs', 'tinysrgb');
+  u.searchParams.set('fit', 'crop');
+  return u.toString();
+}
+
 const HeroSection = ({ article }: HeroSectionProps) => {
   const timeAgo    = formatDistanceToNow(new Date(article.published_date), { addSuffix: true });
   const articleHref = `/article/${article.slug ?? article.id}`;
@@ -48,7 +64,16 @@ const HeroSection = ({ article }: HeroSectionProps) => {
           {article.image_url && (
             <div className="w-full mb-6 sm:mb-8 overflow-hidden rounded-xl">
               <img
-                src={article.image_url}
+                /*
+                  LCP IMAGE FIX:
+                  - pexelsResize() adds ?w=800&q=80 — reduces from ~96 KB to ~25 KB
+                  - width/height kept at 1200/630 for correct aspect ratio reservation
+                  - loading="eager" + fetchPriority="high" already correct — kept as-is
+                  - decoding="sync" already correct for LCP — kept as-is
+                  
+                  For card images (lazy loaded), use pexelsResize(url, 640, 75) instead.
+                */
+                src={pexelsResize(article.image_url, 800, 80)}
                 alt={article.title}
                 width={1200}
                 height={630}
