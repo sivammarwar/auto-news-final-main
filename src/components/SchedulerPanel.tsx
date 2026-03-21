@@ -50,7 +50,7 @@ export default function SchedulerPanel() {
   const bulkSavingRef = useRef(false);
 
   const [settings, setSettings] = useState<ScheduleSettings>({
-    enabled: true, hourUtc: 23, articlesPerCat: 2,
+    enabled: true, hourUtc: 23, articlesPerCat: 1,
     status: 'idle', lastRun: '', nextRun: '',
   });
   const [saving, setSaving]             = useState(false);
@@ -156,34 +156,50 @@ export default function SchedulerPanel() {
     } finally { setSaving(false); savingRef.current = false; }
   };
 
+  // ── FIX: uses /api/trigger-generation proxy so CRON_SECRET stays server-side
   const triggerNow = async () => {
     setTriggering(true); setLogs([]);
     addLog('▶ Triggering generation pipeline...', 'info');
     try {
-      const body: any = { manual: true, articlesPerRun: settings.articlesPerCat };
+      const body: any = { manual: true };
       if (targetSubcat) body.subcategory = targetSubcat;
-      addLog(`Sending request${targetSubcat ? ` (subcategory: ${targetSubcat})` : ' (random subcategory)'}...`, 'info');
-      const res = await fetch('/api/cron/generate-history', {
+      addLog(
+        `Sending request${targetSubcat ? ` (subcategory: ${targetSubcat})` : ' (all 15 categories)'}...`,
+        'info'
+      );
+
+      // ← Calls our secure server-side proxy, NOT the cron endpoint directly
+      const res = await fetch('/api/trigger-generation', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET ?? ''}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+
       const data = await res.json();
-      if (!res.ok) { addLog(`❌ Failed: ${data.error ?? res.statusText}`, 'error'); return; }
-      addLog(`✅ Done — ${data.total ?? 0} written, ${data.published ?? 0} published, ${data.drafts ?? 0} drafts`, 'success');
+      if (!res.ok) {
+        addLog(`❌ Failed: ${data.error ?? res.statusText}`, 'error');
+        return;
+      }
+      addLog(
+        `✅ Done — ${data.total ?? 0} written, ${data.published ?? 0} published, ${data.drafts ?? 0} drafts`,
+        'success'
+      );
       data.details?.forEach((d: any) => {
         const type: TriggerLog['type'] =
           d.status.startsWith('published') ? 'success'
           : d.status.startsWith('error') || d.status.endsWith('_failed') ? 'error'
           : 'info';
-        addLog(`  · [${d.subcategory}] ${d.title ? `"${d.title.substring(0, 50)}"` : d.status} — ${d.status}`, type);
+        addLog(
+          `  · [${d.subcategory}] ${d.title ? `"${d.title.substring(0, 50)}"` : d.status} — ${d.status}`,
+          type
+        );
       });
       await loadSettings();
-    } catch (err: any) { addLog(`❌ Error: ${err.message}`, 'error'); }
-    finally { setTriggering(false); }
+    } catch (err: any) {
+      addLog(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setTriggering(false);
+    }
   };
 
   // ── Bulk actions ──────────────────────────────────────────────────────────
@@ -212,30 +228,38 @@ export default function SchedulerPanel() {
     } finally { setBulkSaving(false); bulkSavingRef.current = false; }
   };
 
+  // ── FIX: uses /api/trigger-generation proxy for bulk too
   const runBulkGeneration = async (isAuto = false) => {
     if (bulkTriggering || bulk.status === 'running') return;
     setBulkTriggering(true); setBulkLogs([]);
-    addBulkLog(`${isAuto ? '⏰ Auto-triggered' : '▶ Manually triggered'} — All 15 categories bulk generation`, 'info');
+    addBulkLog(
+      `${isAuto ? '⏰ Auto-triggered' : '▶ Manually triggered'} — All 15 categories bulk generation`,
+      'info'
+    );
     await supabase.from('settings').upsert({ key: 'bulk_schedule_status',   value: 'running',               updated_at: new Date().toISOString() });
     await supabase.from('settings').upsert({ key: 'bulk_schedule_last_run', value: new Date().toISOString(), updated_at: new Date().toISOString() });
     setBulk(s => ({ ...s, status: 'running', lastRun: new Date().toISOString() }));
     try {
-      addBulkLog(`📡 Calling /api/generate-articles (all 15 categories × 1 articles)...`, 'info');
-      const res = await fetch('/api/generate-articles', {
+      addBulkLog(`📡 Calling generation pipeline (all 15 categories × 1 article)...`, 'info');
+
+      // ← Same secure proxy route
+      const res = await fetch('/api/trigger-generation', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET ?? ''}`,
-        },
-        body: JSON.stringify({ articlesPerCategory: 2 }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manual: true }),
       });
+
       const data = await res.json();
       if (!res.ok) {
         addBulkLog(`❌ Failed: ${data.error ?? res.statusText}`, 'error');
         await supabase.from('settings').upsert({ key: 'bulk_schedule_status', value: 'error', updated_at: new Date().toISOString() });
-        setBulk(s => ({ ...s, status: 'error' })); return;
+        setBulk(s => ({ ...s, status: 'error' }));
+        return;
       }
-      addBulkLog(`✅ Complete — ${data.total ?? 0} written · ${data.published ?? 0} published · ${data.drafts ?? 0} drafts · ${data.skipped ?? 0} skipped`, 'success');
+      addBulkLog(
+        `✅ Complete — ${data.total ?? 0} written · ${data.published ?? 0} published · ${data.drafts ?? 0} drafts · ${data.skipped ?? 0} skipped`,
+        'success'
+      );
       data.details?.forEach((d: any) => {
         const cat = HISTORY_CATEGORIES[d.subcategory];
         const type: TriggerLog['type'] =
@@ -243,17 +267,22 @@ export default function SchedulerPanel() {
           : d.status === 'no_topics_in_pool' ? 'warn'
           : d.status.startsWith('error') || d.status.endsWith('_failed') ? 'error'
           : 'info';
-        addBulkLog(`  ${cat?.emoji ?? '📄'} [${d.subcategory}] ${d.title ? `"${d.title.substring(0, 45)}..."` : d.status} — ${d.status}`, type);
+        addBulkLog(
+          `  ${cat?.emoji ?? '📄'} [${d.subcategory}] ${d.title ? `"${d.title.substring(0, 45)}..."` : d.status} — ${d.status}`,
+          type
+        );
       });
       const nextRun = computeNextRun(bulk.hourUtc);
-      await supabase.from('settings').upsert({ key: 'bulk_schedule_status',   value: 'idle',    updated_at: new Date().toISOString() });
-      await supabase.from('settings').upsert({ key: 'bulk_schedule_next_run', value: nextRun,   updated_at: new Date().toISOString() });
+      await supabase.from('settings').upsert({ key: 'bulk_schedule_status',   value: 'idle',  updated_at: new Date().toISOString() });
+      await supabase.from('settings').upsert({ key: 'bulk_schedule_next_run', value: nextRun, updated_at: new Date().toISOString() });
       setBulk(s => ({ ...s, status: 'idle', nextRun }));
     } catch (err: any) {
       addBulkLog(`❌ Error: ${err.message}`, 'error');
       await supabase.from('settings').upsert({ key: 'bulk_schedule_status', value: 'error', updated_at: new Date().toISOString() });
       setBulk(s => ({ ...s, status: 'error' }));
-    } finally { setBulkTriggering(false); }
+    } finally {
+      setBulkTriggering(false);
+    }
   };
 
   const statusColor = (s: string) =>
@@ -269,7 +298,7 @@ export default function SchedulerPanel() {
       <Card className="p-5 border-2 border-amber-200 bg-amber-50/20">
         <h2 className="font-bold text-lg text-amber-900 mb-1 flex items-center gap-2">
           ⏰ Daily Article Generation Schedule
-          <span className="text-xs font-normal text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">1 random subcategory/day</span>
+          <span className="text-xs font-normal text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">All 15 categories × 1 article/day</span>
         </h2>
         <p className="text-xs text-amber-600 mb-4">
           Select the UTC hour — the IST time is shown next to it so you always know what you're setting.
@@ -344,7 +373,7 @@ export default function SchedulerPanel() {
               onChange={e => setTargetSubcat(e.target.value)}
               className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-800"
             >
-              <option value="">Random subcategory</option>
+              <option value="">All 15 categories (recommended)</option>
               {Object.entries(HISTORY_CATEGORIES).map(([key, cat]) => (
                 <option key={key} value={key}>{cat.emoji} {cat.label}</option>
               ))}
@@ -370,9 +399,9 @@ export default function SchedulerPanel() {
       <Card className="p-5 border-2 border-purple-200 bg-purple-50/20">
         <h2 className="font-bold text-lg text-purple-900 mb-1 flex items-center gap-2">
           🗂️ Bulk Generation Schedule
-          <span className="text-xs font-normal text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">All 15 categories × 1 articles</span>
+          <span className="text-xs font-normal text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">All 15 categories × 1 article</span>
         </h2>
-        <p className="text-xs text-purple-600 mb-4">Runs the full pipeline — picks 1 unused topics from each category, writes 15 articles total, marks topics as used.</p>
+        <p className="text-xs text-purple-600 mb-4">Runs the full pipeline — picks 1 unused topic from each category, writes 15 articles total, marks topics as used.</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
           <div>
