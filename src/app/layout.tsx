@@ -20,9 +20,6 @@ export const metadata: Metadata = {
     'colonialism history', 'science history', 'Hidden Facts',
   ],
   authors: [{ name: 'Hidden Facts' }],
-  verification: {
-    google: 'ca-pub-7368509971017880',
-  },
   openGraph: {
     type:        'website',
     siteName:    'Hidden Facts',
@@ -61,12 +58,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        {/* AdSense account verification */}
+        <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
+
         <link rel="preconnect" href="https://images.pexels.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://images.pexels.com" />
         <link rel="preconnect" href="https://gybxyzdjvptlitymvxlc.supabase.co" crossOrigin="" />
         <link rel="dns-prefetch" href="https://gybxyzdjvptlitymvxlc.supabase.co" />
         <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com" />
+
         <style>{`
           *, *::before, *::after {
             font-synthesis: none;
