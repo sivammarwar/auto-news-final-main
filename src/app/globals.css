@@ -129,18 +129,24 @@
   }
 }
 
-/* ── Article card fade-in (replaces framer-motion on cards) ── */
+/* ── Article card fade-in ────────────────────────────────────────────────────
+   IMPORTANT: The animation starts from opacity:1 NOT opacity:0.
+   Starting at opacity:0 caused cards to be invisible on back-navigation
+   because Next.js restores the page from cache without re-running the
+   animation, leaving cards stuck at opacity:0 permanently.
+   The subtle translateY is enough to give a nice entrance feel.
+── */
 @keyframes fadein-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0.4; transform: translateY(8px); }
+  to   { opacity: 1;   transform: translateY(0); }
 }
 
 .card-fadein {
-  opacity: 0;
-  animation: fadein-up 0.4s ease forwards;
+  /* No opacity:0 here — card is always visible, animation is just a polish */
+  animation: fadein-up 0.35s ease forwards;
 }
 
-/* ── Hero section fade-in (replaces framer-motion on hero) ── */
+/* ── Hero section fade-in ──────────────────────────────────────────────────── */
 @keyframes fadein-hero {
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
