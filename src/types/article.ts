@@ -1,5 +1,6 @@
 export interface Article {
   id:             number;
+  slug:           string | null;   // SEO-friendly URL slug e.g. 'viking-female-warrior-revealed'
   created_at:     string;
   updated_at:     string;
   title:          string;
