@@ -141,7 +141,7 @@ export default function PrivacyPage() {
               <p>If you have any questions, concerns, or requests regarding this Privacy Policy, please contact us:</p>
               <div className="mt-3 p-4 bg-muted rounded-xl font-mono text-sm">
                 <p><strong>Hidden Facts</strong></p>
-                <p>Email: <a href="mailto:shivamkumarsingh8544@gmail.com" className="text-primary hover:underline">shivamkumarsingh8544@gmail.com</a></p>
+                <p>Email: <a href="mailto:shivamkumarsingh8544@gmail.com" className="text-primary hover:underline">gys738421@gmail.com</a></p>
               </div>
             </Section>
           </div>
