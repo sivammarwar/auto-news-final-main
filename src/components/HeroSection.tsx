@@ -16,13 +16,19 @@ interface HeroSectionProps {
  */
 function pexelsResize(url: string, width = 800, quality = 80): string {
   if (!url || !url.includes('pexels.com')) return url;
-  const u = new URL(url);
-  u.searchParams.set('w', String(width));
-  u.searchParams.set('q', String(quality));
-  u.searchParams.set('auto', 'compress');
-  u.searchParams.set('cs', 'tinysrgb');
-  u.searchParams.set('fit', 'crop');
-  return u.toString();
+  try {
+    const u = new URL(url);
+    // Strip ALL existing params first — prevents saved ?w=1260 from overriding our value
+    u.search = '';
+    u.searchParams.set('w', String(width));
+    u.searchParams.set('q', String(quality));
+    u.searchParams.set('auto', 'compress');
+    u.searchParams.set('cs', 'tinysrgb');
+    u.searchParams.set('fit', 'crop');
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 const HeroSection = ({ article }: HeroSectionProps) => {
