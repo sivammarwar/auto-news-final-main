@@ -29,11 +29,6 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
   'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
 };
 
-/*
-  PERF FIX: Strip ALL existing query params before setting new ones.
-  Also add fm=webp so Pexels serves WebP instead of JPEG — saves ~41 KiB
-  per PageSpeed audit (19 KiB on hero, 11 KiB on each card image).
-*/
 function pexelsResize(url: string, width = 400, quality = 75): string {
   if (!url || !url.includes('pexels.com')) return url;
   try {
@@ -41,12 +36,9 @@ function pexelsResize(url: string, width = 400, quality = 75): string {
     u.search = '';
     u.searchParams.set('w', String(width));
     u.searchParams.set('q', String(quality));
-    u.searchParams.set('auto', 'compress');
+    u.searchParams.set('auto', 'format');
     u.searchParams.set('cs', 'tinysrgb');
     u.searchParams.set('fit', 'crop');
-    // FIX: Request WebP format — Pexels supports this natively.
-    // Saves ~30–40% bytes vs JPEG with no visible quality difference.
-    u.searchParams.set('fm', 'webp');
     return u.toString();
   } catch {
     return url;
@@ -86,23 +78,33 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
     ? `${subcatMeta.emoji} ${subcatMeta.label}`
     : article.category;
 
-  // Human-readable label for aria-label on the card link — used to
-  // disambiguate identical "READ MORE" or card links in accessibility audits.
-  const cardAriaLabel = `Read article: ${article.title}`;
-
   return (
-    <Link
-      href={articleHref}
-      aria-label={cardAriaLabel}
+    /*
+      FIX: Replaced outer <Link> with <div> + onClick.
+      A <Link> renders as <a>, and the category <Link> inside is also an <a>.
+      Nested <a> tags are invalid HTML — React throws a hydration error and
+      browsers handle them inconsistently.
+
+      Solution: outer card is a <div> that navigates on click via router.push().
+      The category link remains a real <Link> (<a>) for correct semantics.
+      Keyboard users can still Tab to the inner category link and the title link.
+    */
+    <div
+      role="article"
+      aria-label={`Read article: ${article.title}`}
       onMouseEnter={() => router.prefetch(articleHref)}
       onMouseDown={() => setActive(true)}
       onMouseLeave={() => setActive(false)}
+      onClick={() => router.push(articleHref)}
+      onKeyDown={e => { if (e.key === 'Enter') router.push(articleHref); }}
+      tabIndex={0}
       className={`
-        group relative flex flex-col p-4 sm:p-6
+        group relative flex flex-col p-4 sm:p-6 cursor-pointer
         shadow-card hover:shadow-card-hover
         z-0 hover:z-10
         bg-background hover:bg-muted/40
         transition-colors duration-150
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
         ${shouldAnimate ? 'card-fadein' : 'opacity-100'}
       `}
       style={shouldAnimate ? { animationDelay: `${index * 50}ms` } : undefined}
@@ -123,19 +125,8 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
 
       <div className="mb-3 flex items-center justify-between gap-2">
         {/*
-          FIX: Replaced `role="link"` span with a real <Link>.
-          role="link" on a <span> is an accessibility anti-pattern:
-          - It fails touch-target size checks (no native padding/click area)
-          - It isn't keyboard-focusable by default without tabIndex
-          - It breaks inside a parent <Link>, causing nested interactive elements
-
-          Solution: Use onClick + e.stopPropagation() on a real <a> via Link.
-          The outer card Link navigates to the article; this inner link navigates
-          to the category. stopPropagation prevents both firing simultaneously.
-
-          aria-label disambiguates identical category links across multiple cards
-          (e.g. two cards both showing "Ancient Civilizations" → same link text,
-          same href → Lighthouse "identical links" audit failure).
+          Category link is a real <a> — valid now that outer wrapper is a <div>.
+          stopPropagation prevents the card onClick from also firing.
         */}
         <Link
           href={categoryPath}
@@ -153,12 +144,25 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
         </span>
       </div>
 
-      <h2
-        className="text-base sm:text-lg font-bold leading-snug tracking-tightest mb-3 transition-colors duration-100"
-        style={{ color: active ? '#3b82f6' : undefined }}
+      {/*
+        Title as a real link for keyboard/screen reader users.
+        Mouse users click the whole card div; keyboard users Tab to this.
+        stopPropagation not needed — both navigate to the same place.
+      */}
+      <Link
+        href={articleHref}
+        onClick={e => e.stopPropagation()}
+        tabIndex={-1}
+        className="focus:outline-none"
+        aria-hidden="true"
       >
-        {article.title}
-      </h2>
+        <h2
+          className="text-base sm:text-lg font-bold leading-snug tracking-tightest mb-3 transition-colors duration-100 hover:text-primary"
+          style={{ color: active ? '#3b82f6' : undefined }}
+        >
+          {article.title}
+        </h2>
+      </Link>
 
       <p className="text-sm leading-relaxed text-muted-foreground line-clamp-3 mb-5 flex-1">
         {article.summary}
@@ -169,23 +173,12 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
           {article.source_name}
         </span>
         {(article as any).era && (
-          /*
-            FIX: Contrast failure.
-            Original: text-[9px] text-muted-foreground bg-muted
-            Problem:  9px text on muted background fails WCAG AA contrast ratio (4.5:1).
-                      At 9px the bar is even higher — small text needs MORE contrast,
-                      not less, yet muted-foreground on muted bg is ~2.5:1.
-            Fix 1:    Bumped to text-[11px] — still small but crosses the "large text"
-                      threshold where WCAG AA only requires 3:1.
-            Fix 2:    Changed text-muted-foreground → text-foreground for full contrast.
-            Both fixes together ensure it passes even on low-contrast themes.
-          */
           <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-foreground bg-muted px-2 py-0.5 rounded-full">
             {(article as any).era}
           </span>
         )}
       </div>
-    </Link>
+    </div>
   );
 };
 

@@ -23,12 +23,24 @@ const CATEGORIES = [
   { label: 'Famous Figures & Leaders', emoji: '👑', path: '/category/famous-figures' },
 ];
 
+/*
+  LCP FIX: Logo inlined as base64 data URL.
+  At 1KB the logo is tiny — base64 adds ~33% overhead making it ~1.4KB in the
+  JS bundle, which is negligible. The benefit is zero network requests:
+    - Eliminates 340ms resource load delay (was blocked by render-blocking CSS)
+    - Eliminates 620ms resource load duration (downloading on slow 4G)
+  Only the element render delay remains (AdSense JS on main thread — not fixable).
+  fetchPriority removed — meaningless for data URLs, no request to prioritize.
+  Also remove <link rel="preload" href="/logo.webp"> from layout.tsx.
+*/
+const LOGO_DATA_URL =
+  'data:image/webp;base64,UklGRigEAABXRUJQVlA4IBwEAACQHwCdASqEAJEAP5XA1mS4rzgpJ9RrSxAyiWMA17mder+fAfRrPn9nue+yuV8El5NH4YyVnovBj++FmVjms29Ijyf2b9XBWQNKgEA+rDovKIZ+rPAie1uKUzIpx6iY49zl3t6ARL01lpq44oafQmBHOfxO9eCsyWOaj1Vz6FYU+vyugwE1G1k2QgLAuV1xLQUaB/V7GNmrEyL/nn97Zo6kAReM9xeUIOJYKcZJOiKuzewNpbLnQlIp+b25AV3xZ032nLi7mUIIcFKCVL1coyo6Q/+6L3CEXvjOp9Ue2deG08JzEgz1owqRz1gqJEua7tqzRm6f/qivq0XF6nt85OTWFLk40oAA/u4gg5+1zHuaFAJ+gQ0LKG31CpGOxofnxG6/PLSmuHMDmpzOHVm7yuUEWV08HGCr9pmFDaMbTaku3jCd3qFp5OVvakHxqRFfG7vyQ5LWfgPNG3FMLNbylcyTfFtCc4CrYY+klGEjHOB9RH3GnTFqIlQuctsPmaA5tSD/HAe229yHfMmvDz1FIm1iPNnTU/6ye3d5CSOdE+Xpx5hkVwdh/hUSJ1JJ3leMqpj5qgFOHp5egYiUeeYLoUnUQKf18SaKIq8a6HiSBpTsWUP8k/ifsQUlgn1Ni7pnrLDzjY9B9JQ6J5ULz+ARPXO7pUkX7SxnH4u3tJ+1asDh1oqb4wy3z9v9lE3wyu4BBRMHHnLUG/73X+gejkO+S9uCtEXurbKqCcNDmYXszKzfgix7j0nkjUix0Fr4ezjQWwy6qgYk4C/QHn6slOyJ1Vi0Eom3cYIipe+6C+BOAOT2i4+n1Et0+mXmDiKAw1SNnZD55rrdH7JHhcw9VABMqvL7W4M+bFy/6evLtxqOUryBHPNW+nw55cKawBppx2nDQEgI0/eyO5dyugnbFmUW+uTq3vrm2l0aZnqan9GvCmaH75oF2SWcYuKgP8ZJnSqAS7TS9nHb6CRqjdYYOBa3+88FIOaNQqueDUG/EHV9oOY54n4WAgLXH3i7MQgvToCf6fqEd0/gm9GhaelVM/zcW4uOuRWBpoqYeuiCdESr8INoTd5guh6Cc0Sgcn2mWydG3MsSPep3HJZCR+Pfkm1n/+EqvlXz3cswc5BuWjtYfmsB5nQFeQgF8eoXpfHDsnRqRUZCKkG+zMPxIO4My6+XNA+HsByd5jiztEqknNNDLBsuMzF3Cq0LxVkpJigJpKKhZ+/FOIz0D7J6vD+f3mAnF3kxH5SVaBRIZF6fpuSgSNOu0oXtS/L19yJJwxkj+qxDjENK9gjVSniTm9jJ3CRlGiKe6LfyQEMy9SDr35wZ63QW+ksJBhS2Jj7MYvQGKMsg5EIlr1URD7wpnyQvSzywDVJWioxycJkQD4FuQ/zzd1D27f1ATLX8fAAAAAAAAA==';
+
 const SiteHeader = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileOpen,   setMobileOpen]   = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pathname    = usePathname();
-  // Stable ID for aria-controls linking button → dropdown panel
   const dropdownId  = useId();
 
   useEffect(() => {
@@ -46,13 +58,11 @@ const SiteHeader = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Lock body scroll when mobile drawer is open; always restore on unmount
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
 
-  // Close dropdown on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setDropdownOpen(false);
@@ -66,23 +76,18 @@ const SiteHeader = () => {
       <header className="sticky top-0 z-50 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
         <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-16 sm:h-16 flex items-center justify-between gap-4">
 
-          {/* Logo */}
+          {/* Logo — inlined as data URL, zero network request */}
           <Link
             href="/"
             aria-label="Hidden Facts — home"
             className="shrink-0 flex items-center gap-3 text-black"
           >
-            {/*
-              fetchPriority="high": logo is above-the-fold LCP candidate.
-              Do NOT add loading="lazy" here — it would conflict with fetchPriority.
-            */}
             <img
-              src="/logo.webp"
+              src={LOGO_DATA_URL}
               alt="Hidden Facts logo"
               width={132}
               height={145}
               className="h-16 w-auto object-contain"
-              fetchPriority="high"
             />
             <div className="flex flex-col leading-tight">
               <span className="font-bold text-xl tracking-tight text-foreground">
@@ -97,7 +102,7 @@ const SiteHeader = () => {
             </div>
           </Link>
 
-          {/* Desktop nav — labelled so screen readers can distinguish it from the mobile nav */}
+          {/* Desktop nav */}
           <nav aria-label="Main navigation" className="hidden md:flex items-center gap-8">
             <Link
               href="/"
@@ -150,13 +155,6 @@ const SiteHeader = () => {
                     transition={{ duration: 0.14 }}
                     className="absolute right-0 mt-3 w-96 bg-background border border-border rounded-xl shadow-xl overflow-hidden"
                   >
-                    {/*
-                      FIX: Removed role="menu" / role="menuitem".
-                      These ARIA roles are for application menus (e.g. Cut/Copy/Paste),
-                      NOT for navigation links. Using them on <a> elements fails
-                      accessibility audits and breaks screen reader behaviour.
-                      A plain <nav> wrapping <Link>s is the correct pattern.
-                    */}
                     <nav aria-label="History categories">
                       <div className="p-2 grid grid-cols-2 gap-0.5">
                         {CATEGORIES.map(cat => (
@@ -221,11 +219,6 @@ const SiteHeader = () => {
               className="fixed top-14 right-0 bottom-0 z-50 w-[85vw] max-w-xs bg-background border-l border-border overflow-y-auto md:hidden"
             >
               <div className="p-4">
-                {/*
-                  FIX: Identical links — desktop nav also has "Home" and "About".
-                  Accessibility audit flags identical link text pointing to the same
-                  href across the page. We disambiguate with aria-label on mobile links.
-                */}
                 <Link
                   href="/"
                   aria-label="Home — Hidden Facts (mobile)"

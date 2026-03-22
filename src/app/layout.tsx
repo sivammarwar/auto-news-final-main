@@ -83,16 +83,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }
         `}</style>
 
-        {/* Preload logo — it is the LCP element, fetch immediately */}
-        <link rel="preload" as="image" href="/logo.webp" />
+        {/*
+          Logo preload REMOVED — logo is now inlined as a base64 data URL
+          in SiteHeader.tsx. A preload for a data URL is meaningless since
+          there is no network request to initiate. Removing it saves a
+          wasted hint slot in the browser's preload scanner.
+        */}
 
         {/*
-          FIX: Removed crossOrigin="" from Pexels preconnect.
-          Images don't use CORS so crossOrigin on their preconnect hint is wrong —
-          it causes the browser to open a SECOND connection for the actual image
-          request, defeating the purpose entirely.
-          PageSpeed flagged this as "Unused preconnect. Check crossorigin attribute"
-          and estimated 310ms LCP savings from fixing it.
+          Pexels preconnect — hero image origin.
+          crossOrigin removed: images don't use CORS so the attribute was
+          causing the browser to open a second connection for the actual
+          image request, defeating the purpose. Plain preconnect is correct.
         */}
         <link rel="preconnect" href="https://images.pexels.com" />
       </head>
@@ -103,11 +105,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Analytics />
 
         {/*
-          PERF FIX: strategy="lazyOnload" defers AdSense until browser is fully idle.
-          - Prevents AdSense from competing with React hydration on mobile
-          - Eliminates the duplicate adsbygoogle.js load (race condition with afterInteractive)
-          - LCP renders unblocked — ads appear after content, not before
-          - Auto Ads still works automatically once account is approved, zero code changes needed
+          strategy="lazyOnload" — fires only when browser is fully idle.
+          Prevents AdSense from competing with React hydration on mobile,
+          eliminates duplicate adsbygoogle.js load, and lets LCP paint first.
+          Ads still appear automatically once account is approved.
         */}
         <Script
           id="adsense"
