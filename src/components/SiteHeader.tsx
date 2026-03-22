@@ -69,7 +69,7 @@ const SiteHeader = () => {
               alt="Hidden Facts"
               width={102}
               height={112}
-              className="h-16 w-auto object-contain"
+              className="h-12 w-auto object-contain"
               fetchPriority="high"
             />
             <div className="flex flex-col leading-tight">
