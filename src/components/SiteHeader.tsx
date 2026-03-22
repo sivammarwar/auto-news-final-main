@@ -76,7 +76,10 @@ const SiteHeader = () => {
               <span className="font-bold text-xl tracking-tight text-foreground">
                 Hidden Facts
               </span>
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+              <span 
+              className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground"
+              aria-hidden="true"
+              >
                 The History Books Left This Out
               </span>
             </div>
