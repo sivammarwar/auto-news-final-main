@@ -59,12 +59,18 @@ const SiteHeader = () => {
             href="/"
             className="shrink-0 flex items-center gap-3 text-black"
           >
+            {/*
+              PERF FIX: Added fetchPriority="high" to logo image.
+              PageSpeed flagged this as missing — the logo is above the fold
+              and part of LCP, so it should be fetched with high priority.
+            */}
             <img
               src="/logo.webp"
               alt="Hidden Facts"
               width={102}
               height={112}
               className="h-16 w-auto object-contain"
+              fetchPriority="high"
             />
             <div className="flex flex-col leading-tight">
               <span className="font-bold text-xl tracking-tight text-foreground">

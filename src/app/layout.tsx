@@ -57,20 +57,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/* AdSense account verification */}
+        {/* AdSense account verification — DO NOT TOUCH */}
         <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
 
-        {/* AdSense script — plain tag avoids Next.js data-nscript warning */}
+        {/* AdSense script — DO NOT TOUCH */}
         <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880"
           crossOrigin="anonymous"
         />
 
+        {/*
+          PERF FIX: Reduced from 6 preconnects to 2.
+          PageSpeed warned "More than 4 preconnect connections were found".
+          Too many preconnects compete for TCP slots and slow down the actual
+          critical connections. Kept only the two most important origins:
+          - Pexels: serves article hero images (directly affects LCP)
+          - AdSense: must stay for ad revenue
+          Supabase is server-side only so browser preconnect is wasted.
+        */}
         <link rel="preconnect" href="https://images.pexels.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://images.pexels.com" />
-        <link rel="preconnect" href="https://gybxyzdjvptlitymvxlc.supabase.co" crossOrigin="" />
-        <link rel="dns-prefetch" href="https://gybxyzdjvptlitymvxlc.supabase.co" />
         <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com" />
 
