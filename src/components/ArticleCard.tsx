@@ -27,6 +27,8 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
   'regional-history':       { label: 'Regional History',         emoji: '🗺️' },
   'archaeology-mysteries':  { label: 'Archaeology & Mysteries',  emoji: '🔍' },
   'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
+  'beyond-human-limits':    { label: 'Beyond Human Limits',      emoji: '🚀' },
+  'historys-unsung-heroes': { label: "History's Unsung Heroes",  emoji: '⭐' },
 };
 
 function pexelsResize(url: string, width = 400, quality = 75): string {
