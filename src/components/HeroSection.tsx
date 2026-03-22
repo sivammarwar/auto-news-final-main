@@ -89,14 +89,23 @@ const HeroSection = ({ article }: HeroSectionProps) => {
           </p>
 
           {article.image_url && (
-            <div className="w-full mb-6 sm:mb-8 overflow-hidden rounded-xl">
+            /*
+              CLS FIX: Replaced max-height:55vh on the img with an aspect-ratio
+              wrapper div. When max-height was on the img directly, it overrode the
+              width/height attributes so the browser could not reserve space before
+              the image loaded, causing CLS of 0.341. The wrapper reserves exact
+              space via aspect-ratio and the img fills it with object-cover.
+            */
+            <div
+              className="w-full mb-6 sm:mb-8 overflow-hidden rounded-xl bg-muted"
+              style={{ aspectRatio: '16/9', maxHeight: '55vh' }}
+            >
               <img
                 src={pexelsResize(article.image_url, 700, 75)}
                 alt={article.title}
-                width={1200}
-                height={630}
-                className="w-full h-auto object-cover"
-                style={{ maxHeight: '55vh' }}
+                width={700}
+                height={394}
+                className="w-full h-full object-cover"
                 loading="eager"
                 fetchPriority="high"
                 decoding="sync"
