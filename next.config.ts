@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: { allowedOrigins: ['hiddenhistoryfacts.com', 'www.hiddenhistoryfacts.com'] },
-    optimizeCss: true, // Inlines critical CSS → eliminates render-blocking chunk
+    // optimizeCss removed — causes 4,570ms TBT regression on mobile with Next.js 16 + React 19
   },
 };
 
