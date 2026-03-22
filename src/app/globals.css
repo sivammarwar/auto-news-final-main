@@ -146,10 +146,14 @@
   animation: fadein-up 0.35s ease forwards;
 }
 
-/* ── Hero section fade-in ──────────────────────────────────────────────────── */
+/* ── Hero section fade-in ──────────────────────────────────────────────────── 
+   CLS FIX: Removed translateY from this animation.
+   transform: translateY() triggers forced reflow during animation which
+   caused CLS 0.171 on desktop. Opacity-only fade has zero layout impact.
+── */
 @keyframes fadein-hero {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .hero-fadein {
