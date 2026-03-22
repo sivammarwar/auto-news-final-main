@@ -86,8 +86,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Preload logo — it is the LCP element, fetch immediately */}
         <link rel="preload" as="image" href="/logo.webp" />
 
-        {/* Pexels preconnect — hero image origin, saves ~300ms on LCP */}
-        <link rel="preconnect" href="https://images.pexels.com" crossOrigin="" />
+        {/*
+          FIX: Removed crossOrigin="" from Pexels preconnect.
+          Images don't use CORS so crossOrigin on their preconnect hint is wrong —
+          it causes the browser to open a SECOND connection for the actual image
+          request, defeating the purpose entirely.
+          PageSpeed flagged this as "Unused preconnect. Check crossorigin attribute"
+          and estimated 310ms LCP savings from fixing it.
+        */}
+        <link rel="preconnect" href="https://images.pexels.com" />
       </head>
       <body>
         <Providers>
@@ -96,23 +103,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Analytics />
 
         {/*
-          FIX: Changed strategy from "afterInteractive" → "lazyOnload".
-
-          Problem with afterInteractive on mobile:
-          - On slow 4G, afterInteractive fires right after hydration
-          - This puts AdSense execution on the main thread simultaneously
-            with React hydration → 1,120ms element render delay on LCP
-          - Worse: Auto Ads was triggering a SECOND load of adsbygoogle.js
-            (the ?fcd=true variant), doubling the AdSense payload to 110 KiB
-
-          lazyOnload fires only when the browser is completely idle —
-          after all critical content has painted and the user can interact.
-          This means:
-          - LCP renders unblocked (no main thread contention)
-          - No duplicate script load (idle-time load avoids the race condition)
-          - Ads still appear automatically once approved, zero code changes needed
-          - On desktop (fast connection) the difference is imperceptible
-          - On mobile (slow 4G) this saves ~1,000ms of render delay
+          PERF FIX: strategy="lazyOnload" defers AdSense until browser is fully idle.
+          - Prevents AdSense from competing with React hydration on mobile
+          - Eliminates the duplicate adsbygoogle.js load (race condition with afterInteractive)
+          - LCP renders unblocked — ads appear after content, not before
+          - Auto Ads still works automatically once account is approved, zero code changes needed
         */}
         <Script
           id="adsense"
