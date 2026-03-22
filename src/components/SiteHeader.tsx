@@ -73,7 +73,7 @@ const SiteHeader = () => {
               fetchPriority="high"
             />
             <div className="flex flex-col leading-tight">
-              <span className="font-bold text-xl tracking-tight text-foreground">
+              <span className="font-bold text-sm tracking-tight text-foreground">
                 Hidden Facts
               </span>
               <span 
