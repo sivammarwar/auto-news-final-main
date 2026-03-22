@@ -134,6 +134,8 @@ export const getPublishedArticles = async (
       'human-rights-movements', 'science-technology', 'religion-philosophy',
       'cultural-social', 'economic-trade', 'military-warfare',
       'regional-history', 'archaeology-mysteries', 'famous-figures',
+      // ── NEW ──
+      'beyond-human-limits', 'historys-unsung-heroes',
     ];
     if (subcategorySlugs.includes(slug)) {
       query = query.eq('subcategory', slug);

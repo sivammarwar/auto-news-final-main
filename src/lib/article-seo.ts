@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://yourdomain.com';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
 
 const SUBCATEGORY_LABELS: Record<string, string> = {
   'ancient-civilizations':  'Ancient Civilizations',
@@ -24,6 +24,9 @@ const SUBCATEGORY_LABELS: Record<string, string> = {
   'regional-history':       'Regional History',
   'archaeology-mysteries':  'Archaeology & Mysteries',
   'famous-figures':         'Famous Figures & Leaders',
+  // ── NEW ────────────────────────────────────────────────────────────────────
+  'beyond-human-limits':    'Beyond Human Limits',
+  'historys-unsung-heroes': "History's Unsung Heroes",
 };
 
 // ─── generateMetadata ─────────────────────────────────────────────────────────
@@ -54,7 +57,6 @@ export async function generateMetadata(
     authors:     [{ name: article.source_name ?? 'Hidden Facts' }],
     keywords:    [categoryLabel, 'history', 'Hidden Facts', article.subcategory ?? ''].filter(Boolean),
 
-    // ── Open Graph ─────────────────────────────────────────────────────────
     openGraph: {
       type:        'article',
       url,
@@ -65,17 +67,9 @@ export async function generateMetadata(
       modifiedTime:  article.updated_at,
       authors:     [article.source_name ?? 'Hidden Facts'],
       section:     categoryLabel,
-      images: [
-        {
-          url:   imageUrl,
-          width:  1200,
-          height: 630,
-          alt:    article.title,
-        },
-      ],
+      images: [{ url: imageUrl, width: 1200, height: 630, alt: article.title }],
     },
 
-    // ── Twitter / X card ───────────────────────────────────────────────────
     twitter: {
       card:        'summary_large_image',
       title:       article.title,
@@ -83,18 +77,16 @@ export async function generateMetadata(
       images:      [imageUrl],
     },
 
-    // ── Canonical ──────────────────────────────────────────────────────────
     alternates: {
       canonical: url,
     },
 
-    // ── Robots ─────────────────────────────────────────────────────────────
     robots: {
       index:          true,
       follow:         true,
       googleBot: {
-        index:             true,
-        follow:            true,
+        index:               true,
+        follow:              true,
         'max-image-preview': 'large',
         'max-snippet':       -1,
       },
@@ -103,7 +95,6 @@ export async function generateMetadata(
 }
 
 // ─── JSON-LD structured data ──────────────────────────────────────────────────
-// Call this inside the page component and render as a <script> tag
 export function buildArticleJsonLd(article: {
   id: number;
   title: string;
@@ -154,8 +145,5 @@ export function buildArticleJsonLd(article: {
   };
 }
 
-// ─── ISR config — revalidate every 24 hours ───────────────────────────────────
-// Export this from your page file:
-// export const revalidate = 86400;
-// New articles get fresh HTML within 24h, existing articles are served from cache
+// ─── ISR config ───────────────────────────────────────────────────────────────
 export const ARTICLE_REVALIDATE_SECONDS = 86400; // 24 hours

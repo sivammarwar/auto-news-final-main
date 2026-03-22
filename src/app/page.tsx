@@ -17,21 +17,23 @@ import Link from 'next/link';
 export const revalidate = 1800;
 
 const QUICK_LINKS = [
-  { label: '🏛️ Ancient',       path: '/category/ancient-civilizations' },
-  { label: '⚔️ Medieval',       path: '/category/medieval-feudal' },
-  { label: '🧭 Exploration',    path: '/category/age-of-exploration' },
-  { label: '✊ Revolutions',    path: '/category/revolutions-politics' },
-  { label: '🎖️ World Wars',    path: '/category/world-wars-conflicts' },
-  { label: '🌐 Colonial',       path: '/category/colonial-imperial' },
-  { label: '🕊️ Human Rights',  path: '/category/human-rights-movements' },
-  { label: '🔬 Science',        path: '/category/science-technology' },
-  { label: '📿 Religion',       path: '/category/religion-philosophy' },
-  { label: '🎭 Culture',        path: '/category/cultural-social' },
-  { label: '🏺 Trade',          path: '/category/economic-trade' },
-  { label: '🗡️ Military',       path: '/category/military-warfare' },
-  { label: '🗺️ Regional',       path: '/category/regional-history' },
-  { label: '🔍 Archaeology',    path: '/category/archaeology-mysteries' },
-  { label: '👑 Famous Figures', path: '/category/famous-figures' },
+  { label: '🏛️ Ancient',          path: '/category/ancient-civilizations' },
+  { label: '⚔️ Medieval',          path: '/category/medieval-feudal' },
+  { label: '🧭 Exploration',       path: '/category/age-of-exploration' },
+  { label: '✊ Revolutions',       path: '/category/revolutions-politics' },
+  { label: '🎖️ World Wars',       path: '/category/world-wars-conflicts' },
+  { label: '🌐 Colonial',          path: '/category/colonial-imperial' },
+  { label: '🕊️ Human Rights',     path: '/category/human-rights-movements' },
+  { label: '🔬 Science',           path: '/category/science-technology' },
+  { label: '📿 Religion',          path: '/category/religion-philosophy' },
+  { label: '🎭 Culture',           path: '/category/cultural-social' },
+  { label: '🏺 Trade',             path: '/category/economic-trade' },
+  { label: '🗡️ Military',          path: '/category/military-warfare' },
+  { label: '🗺️ Regional',          path: '/category/regional-history' },
+  { label: '🔍 Archaeology',       path: '/category/archaeology-mysteries' },
+  { label: '👑 Famous Figures',    path: '/category/famous-figures' },
+  { label: '🚀 Beyond Limits',     path: '/category/beyond-human-limits' },
+  { label: '⭐ Unsung Heroes',     path: '/category/historys-unsung-heroes' },
 ];
 
 async function getArticles() {

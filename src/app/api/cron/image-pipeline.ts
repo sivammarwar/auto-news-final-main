@@ -34,6 +34,9 @@ const SUBCATEGORY_FALLBACKS: Record<string, string[]> = {
   'regional-history':       ['ancient world heritage site', 'archaeological ruins landscape', 'ancient palace architecture', 'historical monument ruins'],
   'archaeology-mysteries':  ['archaeological excavation dig', 'ancient mystery ruins stone', 'Stonehenge ancient stone', 'archaeological artifact display'],
   'famous-figures':         ['historical portrait museum painting', 'ancient sculpture bust museum', 'historical monument leader', 'ancient ruler artifact'],
+  // ── NEW ──
+  'beyond-human-limits':    ['human achievement triumph historical', 'moon landing space NASA', 'engineering marvel construction historical', 'first flight aviation Wright brothers'],
+  'historys-unsung-heroes': ['ordinary people courage historical', 'humanitarian aid help historical', 'forgotten hero memorial monument', 'resilience community strength historical'],
 };
 
 // General fallback used when subcategory is unknown

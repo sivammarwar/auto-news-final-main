@@ -88,7 +88,7 @@ export default function SchedulerPanel() {
         </span>
       </h2>
       <p className="text-xs text-amber-600 mb-4">
-        Picks 1 unused topic from each category, writes 15 articles, auto-publishes those scoring ≥ 7.5 with 2+ images.
+        Picks 1 unused topic from each category, writes 17 articles, auto-publishes those scoring ≥ 7.5 with 2+ images.
         GitHub Action runs this automatically at 2:00 PM IST daily.
       </p>
 
@@ -99,7 +99,7 @@ export default function SchedulerPanel() {
           disabled={triggering}
           className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-800 disabled:opacity-50"
         >
-          <option value="">All 15 categories (recommended)</option>
+          <option value="">All 17 categories (recommended)</option>
           {Object.entries(HISTORY_CATEGORIES).map(([key, cat]) => (
             <option key={key} value={key}>{cat.emoji} {cat.label}</option>
           ))}

@@ -77,7 +77,7 @@ const AUTHOR = {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-// 15 HISTORY CATEGORIES
+// 17 HISTORY CATEGORIES
 // ════════════════════════════════════════════════════════════════════════════
 const HISTORY_CATEGORIES: Record<string, {
   label: string;
@@ -144,6 +144,15 @@ const HISTORY_CATEGORIES: Record<string, {
   'famous-figures': {
     label: 'Famous Figures & Leaders', emoji: '👑', era: 'all',
     imageQueries: ['historical portrait leader ancient','historical figure sculpture monument','famous leader historical portrait museum','ancient ruler emperor historical artwork','historical biography portrait painting','leader monument memorial historical','ancient king queen historical sculpture','famous historical figure bust museum'],
+  },
+  // ── NEW CATEGORIES ──────────────────────────────────────────────────────────
+  'beyond-human-limits': {
+    label: 'Beyond Human Limits', emoji: '🚀', era: 'all',
+    imageQueries: ['human achievement breakthrough historical','impossible engineering feat construction','moon landing space achievement NASA','first flight aviation Wright brothers','engineering marvel historical monument','scientific breakthrough discovery moment','human endurance survival extreme historical','record breaking achievement triumph historical'],
+  },
+  'historys-unsung-heroes': {
+    label: "History's Unsung Heroes", emoji: '⭐', era: 'all',
+    imageQueries: ['unsung hero historical portrait courage','ordinary people extraordinary acts historical','forgotten hero memorial monument historical','resilience courage ordinary person historical','humanitarian selfless act historical photo','hidden history hero recognition portrait','courage adversity overcome historical story','community strength hope historical people'],
   },
 };
 
@@ -436,42 +445,42 @@ export default function AdminPanel() {
     setGenLogs(prev => [...prev.slice(-400), { id: Date.now() + Math.random(), message, type, ts: nowTS() }]);
   }, []);
 
-  // ── TOPIC POOL COUNTS — with full debug logging ───────────────────────────
+  // ── TOPIC POOL COUNTS ─────────────────────────────────────────────────────
   const fetchTopicPoolCounts = async () => {
     console.log('[topic_pool] Starting paginated fetch...');
     setTopicDebugMsg('⏳ Fetching topic pool counts...');
-  
+
     try {
       const allData: { subcategory: string; is_used: boolean }[] = [];
       const pageSize = 1000;
       let from = 0;
       let hasMore = true;
-  
+
       while (hasMore) {
         const { data, error: e } = await db
           .from('topic_pool')
           .select('subcategory, is_used')
           .range(from, from + pageSize - 1);
-  
+
         if (e) {
           const msg = `❌ topic_pool fetch error: ${e.message}`;
           console.error('[topic_pool]', msg);
           setTopicDebugMsg(msg);
           return;
         }
-  
+
         if (!data || data.length === 0) break;
-  
+
         allData.push(...data);
         console.log(`[topic_pool] Fetched ${allData.length} rows so far...`);
-  
+
         hasMore = data.length === pageSize;
         from += pageSize;
       }
-  
+
       console.log(`[topic_pool] Total rows fetched: ${allData.length}`);
       setTopicDebugMsg(`✅ Loaded ${allData.length} topic rows successfully`);
-  
+
       const counts: Record<string, { unused: number; total: number }> = {};
       for (const row of allData) {
         if (!counts[row.subcategory]) counts[row.subcategory] = { unused: 0, total: 0 };
@@ -480,7 +489,7 @@ export default function AdminPanel() {
       }
       setTopicPoolCounts(Object.entries(counts).map(([subcategory, v]) => ({ subcategory, ...v })));
       setTimeout(() => setTopicDebugMsg(null), 5000);
-  
+
     } catch (err: any) {
       const msg = `❌ Unexpected error: ${err?.message ?? String(err)}`;
       console.error('[topic_pool] catch:', err);
@@ -848,7 +857,7 @@ export default function AdminPanel() {
 
       <SchedulerPanel />
 
-      {/* ── DEBUG BANNER — shows topic_pool fetch status ── */}
+      {/* ── DEBUG BANNER ── */}
       {topicDebugMsg && (
         <div className={`mb-4 p-3 rounded-lg border text-sm font-mono flex items-center justify-between gap-3 ${
           topicDebugMsg.startsWith('✅') ? 'bg-green-50 border-green-300 text-green-800' :
@@ -876,6 +885,7 @@ export default function AdminPanel() {
         </div>
       )}
 
+      {/* ── TOPIC POOL MANAGER ── */}
       <Card className="mb-6 overflow-hidden border-2 border-blue-200">
         <div className="p-4 bg-blue-50 flex items-center justify-between cursor-pointer" onClick={() => setShowTopicPool(s => !s)}>
           <div className="flex items-center gap-2">
@@ -956,13 +966,14 @@ export default function AdminPanel() {
         )}
       </Card>
 
+      {/* ── GENERATE PANEL ── */}
       <Card className="mb-6 overflow-hidden border-2 border-amber-200">
         <div className="p-5 bg-amber-50">
           <div className="flex flex-col md:flex-row md:items-start gap-4">
             <div className="flex-1">
               <h2 className="font-bold text-amber-900 text-lg flex items-center gap-2 mb-1">
                 <Zap size={20} className="text-amber-600 shrink-0" />
-                Generate All 15 History Categories
+                Generate All 17 History Categories
               </h2>
               <p className="text-sm text-amber-700 mb-3">
                 Picks {ARTICLES_PER_CATEGORY} unused topics per category from your pool → writes articles → marks topics as used.
@@ -1020,6 +1031,7 @@ export default function AdminPanel() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ── ARTICLE LIST ── */}
         <div className="lg:col-span-1">
           <Card className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -1093,6 +1105,7 @@ export default function AdminPanel() {
           </Card>
         </div>
 
+        {/* ── ARTICLE DETAIL ── */}
         <div className="lg:col-span-2">
           {!selectedArticle || selectMode ? (
             <Card className="flex flex-col items-center justify-center min-h-[400px] text-gray-400">

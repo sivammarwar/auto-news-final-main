@@ -18,17 +18,20 @@ export const HISTORY_SUBCATEGORY_SLUGS = [
   'regional-history',
   'archaeology-mysteries',
   'famous-figures',
+  // ── NEW ──
+  'beyond-human-limits',
+  'historys-unsung-heroes',
 ] as const;
 
 export type HistorySubcategory = (typeof HISTORY_SUBCATEGORY_SLUGS)[number];
 
 // ─── Era labels ───────────────────────────────────────────────────────────────
 export const ERA_LABELS: Record<string, string> = {
-  ancient:      'Ancient (before 500 AD)',
-  medieval:     'Medieval (500–1500 AD)',
+  ancient:        'Ancient (before 500 AD)',
+  medieval:       'Medieval (500–1500 AD)',
   'early-modern': 'Early Modern (1500–1800)',
-  modern:       'Modern (1800–present)',
-  all:          'All eras',
+  modern:         'Modern (1800–present)',
+  all:            'All eras',
 };
 
 // ─── Validate that a slug is a known history subcategory ─────────────────────

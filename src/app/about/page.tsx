@@ -35,10 +35,10 @@ export default function AboutPage() {
           </p>
 
           <p>
-            This site publishes deeply researched articles across 15 categories of world history.
+            This site publishes deeply researched articles across 17 categories of world history.
             Ancient civilizations, military conflicts, forgotten revolutions, the people who shaped
             empires, and the events that textbooks quietly glossed over.{' '}
-            <span className="text-foreground font-semibold">Around 15 new articles go live every day</span>,
+            <span className="text-foreground font-semibold">Around 17 new articles go live every day</span>,
             published in the early hours between 4:00 AM and 7:00 AM.
           </p>
 
@@ -70,22 +70,25 @@ export default function AboutPage() {
           <h2 className="font-bold text-foreground text-xl pt-2">What We Cover</h2>
 
           <p>
-            Fifteen categories from ancient civilizations and medieval warfare to colonial empires,
-            human rights movements, scientific breakthroughs, and famous figures who changed
+            Seventeen categories from ancient civilizations and medieval warfare to colonial empires,
+            human rights movements, scientific breakthroughs, the feats that defied all logic,
+            the unsung heroes history forgot to celebrate, and famous figures who changed
             the course of events. Every piece is original, sourced from historical record,
             and written to be read by anyone, not just historians.
           </p>
 
           <div className="flex flex-wrap gap-2 py-2">
             {[
-              { label: '🏛️ Ancient',       path: '/category/ancient-civilizations' },
-              { label: '⚔️ Medieval',       path: '/category/medieval-feudal' },
-              { label: '🎖️ World Wars',     path: '/category/world-wars-conflicts' },
-              { label: '🔬 Science',         path: '/category/science-technology' },
-              { label: '👑 Famous Figures',  path: '/category/famous-figures' },
-              { label: '🔍 Archaeology',     path: '/category/archaeology-mysteries' },
-              { label: '🕊️ Human Rights',   path: '/category/human-rights-movements' },
-              { label: '🌐 Colonial',        path: '/category/colonial-imperial' },
+              { label: '🏛️ Ancient',          path: '/category/ancient-civilizations' },
+              { label: '⚔️ Medieval',          path: '/category/medieval-feudal' },
+              { label: '🎖️ World Wars',        path: '/category/world-wars-conflicts' },
+              { label: '🔬 Science',            path: '/category/science-technology' },
+              { label: '👑 Famous Figures',     path: '/category/famous-figures' },
+              { label: '🔍 Archaeology',        path: '/category/archaeology-mysteries' },
+              { label: '🕊️ Human Rights',      path: '/category/human-rights-movements' },
+              { label: '🌐 Colonial',           path: '/category/colonial-imperial' },
+              { label: '🚀 Beyond Human Limits', path: '/category/beyond-human-limits' },
+              { label: "⭐ Unsung Heroes",      path: '/category/historys-unsung-heroes' },
             ].map(c => (
               <Link
                 key={c.path}

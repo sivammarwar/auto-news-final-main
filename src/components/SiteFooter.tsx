@@ -18,6 +18,8 @@ const FOOTER_CATEGORIES = [
   { label: '🗺️ Regional History',          path: '/category/regional-history' },
   { label: '🔍 Archaeology & Mysteries',   path: '/category/archaeology-mysteries' },
   { label: '👑 Famous Figures & Leaders',  path: '/category/famous-figures' },
+  { label: '🚀 Beyond Human Limits',       path: '/category/beyond-human-limits' },
+  { label: "⭐ History's Unsung Heroes",   path: '/category/historys-unsung-heroes' },
 ];
 
 const SiteFooter = () => {

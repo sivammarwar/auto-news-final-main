@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     template: '%s | Hidden Facts',
   },
   description:
-    'The history they taught you — and the history they buried. Original long-form articles across 15 categories of world history.',
+    'The history they taught you — and the history they buried. Original long-form articles across 17 categories of world history.',
   keywords: [
     'world history', 'history articles', 'ancient civilizations', 'medieval history',
     'historical mysteries', 'famous figures history', 'military history',

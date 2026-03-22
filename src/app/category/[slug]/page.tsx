@@ -22,6 +22,8 @@ const SUBCATEGORY_SLUGS = new Set([
   'human-rights-movements', 'science-technology', 'religion-philosophy',
   'cultural-social', 'economic-trade', 'military-warfare',
   'regional-history', 'archaeology-mysteries', 'famous-figures',
+  // ── NEW ──
+  'beyond-human-limits', 'historys-unsung-heroes',
 ]);
 
 const CATEGORY_META: Record<string, { name: string; emoji: string; description: string }> = {
@@ -41,6 +43,9 @@ const CATEGORY_META: Record<string, { name: string; emoji: string; description: 
   'regional-history':       { name: 'Regional History',          emoji: '🗺️', description: 'Asia, Africa, the Americas, Europe — the world beyond the Western narrative.' },
   'archaeology-mysteries':  { name: 'Archaeology & Mysteries',   emoji: '🔍', description: 'Lost cities, buried artifacts, unsolved ruins — history still being uncovered.' },
   'famous-figures':         { name: 'Famous Figures & Leaders',  emoji: '👑', description: 'Rulers, scientists, reformers — the real people behind the legends.' },
+  // ── NEW ──
+  'beyond-human-limits':    { name: 'Beyond Human Limits',       emoji: '🚀', description: 'The moon landing, the first flight, the engineering feats that defied all logic — moments when humanity did the impossible.' },
+  'historys-unsung-heroes': { name: "History's Unsung Heroes",   emoji: '⭐', description: 'The nurses, the codebreakers, the ordinary people who changed history without ever getting a statue.' },
 };
 
 export async function generateMetadata(

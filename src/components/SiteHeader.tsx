@@ -21,6 +21,8 @@ const CATEGORIES = [
   { label: 'Regional History',         emoji: '🗺️', path: '/category/regional-history' },
   { label: 'Archaeology & Mysteries',  emoji: '🔍', path: '/category/archaeology-mysteries' },
   { label: 'Famous Figures & Leaders', emoji: '👑', path: '/category/famous-figures' },
+  { label: 'Beyond Human Limits',      emoji: '🚀', path: '/category/beyond-human-limits' },
+  { label: "History's Unsung Heroes",  emoji: '⭐', path: '/category/historys-unsung-heroes' },
 ];
 
 /*

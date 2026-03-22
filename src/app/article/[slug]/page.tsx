@@ -37,6 +37,9 @@ const SUBCATEGORY_LABELS: Record<string, { label: string; emoji: string }> = {
   'regional-history':       { label: 'Regional History',         emoji: '🗺️' },
   'archaeology-mysteries':  { label: 'Archaeology & Mysteries',  emoji: '🔍' },
   'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
+  // ── NEW ──
+  'beyond-human-limits':    { label: 'Beyond Human Limits',      emoji: '🚀' },
+  'historys-unsung-heroes': { label: "History's Unsung Heroes",  emoji: '⭐' },
 };
 
 async function fetchArticle(slug: string) {

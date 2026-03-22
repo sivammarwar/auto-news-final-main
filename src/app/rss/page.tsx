@@ -5,17 +5,24 @@ import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 
 const RSS_FEEDS = [
-  { label: 'All Articles',   url: '/feed.xml',            description: 'Every published article across all categories' },
-  { label: 'Cricket',        url: '/feed/cricket.xml',    description: 'IPL, Tests, BCCI and cricket news' },
-  { label: 'Bollywood',      url: '/feed/bollywood.xml',  description: 'Box office, OTT and Bollywood stories' },
-  { label: 'Technology',     url: '/feed/technology.xml', description: 'Startups, gadgets and tech news' },
-  { label: 'Viral Today',    url: '/feed/viral.xml',      description: 'Trending stories and viral news' },
-  { label: 'Business',       url: '/feed/business.xml',   description: 'Markets, economy and business' },
-  { label: 'India',          url: '/feed/india.xml',      description: 'Politics, policy and national news' },
-  { label: 'World',          url: '/feed/world.xml',      description: 'Global news affecting India' },
-  { label: 'Health',         url: '/feed/health.xml',     description: 'Medicine, wellness and healthcare' },
-  { label: 'Science',        url: '/feed/science.xml',    description: 'ISRO, discoveries and science' },
-  { label: 'Hidden History', url: '/feed/history.xml',    description: 'Weekly deep-dive history pieces' },
+  { label: 'All History',              url: '/feed.xml',                          description: 'Every published article across all 17 categories' },
+  { label: 'Ancient Civilizations',    url: '/feed/ancient-civilizations.xml',    description: 'Egypt, Rome, Greece, Mesopotamia and more' },
+  { label: 'Medieval & Feudal',        url: '/feed/medieval-feudal.xml',          description: 'Kingdoms, crusades, plagues and medieval life' },
+  { label: 'Age of Exploration',       url: '/feed/age-of-exploration.xml',       description: 'Columbus, Zheng He, trade routes and discovery' },
+  { label: 'Revolutions & Politics',   url: '/feed/revolutions-politics.xml',     description: 'French, American, Russian and forgotten revolutions' },
+  { label: 'World Wars & Conflicts',   url: '/feed/world-wars-conflicts.xml',     description: 'WWI, WWII, the Cold War and untold soldier stories' },
+  { label: 'Colonial & Imperial',      url: '/feed/colonial-imperial.xml',        description: 'Empires, independence movements and colonialism' },
+  { label: 'Human Rights Movements',   url: '/feed/human-rights-movements.xml',   description: 'Civil rights, suffrage, abolition and labour history' },
+  { label: 'Science & Technology',     url: '/feed/science-technology.xml',       description: 'Inventions, medicine and the scientists history buried' },
+  { label: 'Religion & Philosophy',    url: '/feed/religion-philosophy.xml',      description: 'Beliefs, myths and the ideas that moved civilizations' },
+  { label: 'Cultural & Social',        url: '/feed/cultural-social.xml',          description: 'Art, fashion, food and the texture of historical life' },
+  { label: 'Economic & Trade',         url: '/feed/economic-trade.xml',           description: 'Silk Road, banking and the forces that shaped history' },
+  { label: 'Military & Warfare',       url: '/feed/military-warfare.xml',         description: 'Battles, tactics and the strategies that won empires' },
+  { label: 'Regional History',         url: '/feed/regional-history.xml',         description: 'Asia, Africa, the Americas — beyond the Western narrative' },
+  { label: 'Archaeology & Mysteries',  url: '/feed/archaeology-mysteries.xml',    description: 'Lost cities, buried artifacts and unsolved ruins' },
+  { label: 'Famous Figures & Leaders', url: '/feed/famous-figures.xml',           description: 'Rulers, scientists and reformers behind the legends' },
+  { label: 'Beyond Human Limits',      url: '/feed/beyond-human-limits.xml',      description: 'The feats that defied logic and changed what was possible' },
+  { label: "History's Unsung Heroes",  url: '/feed/historys-unsung-heroes.xml',   description: 'The ordinary people who changed history without a statue' },
 ];
 
 const RSS_READERS = [
@@ -63,7 +70,7 @@ export default function RSSPage() {
             <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground mb-4 pb-2 border-b border-border">Main Feed</h2>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 sm:p-5 border border-border rounded-xl">
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-foreground text-sm mb-1">All Articles</p>
+                <p className="font-bold text-foreground text-sm mb-1">All History Articles</p>
                 <p className="font-mono text-[10px] sm:text-[11px] text-muted-foreground truncate">{siteUrl}/feed.xml</p>
               </div>
               <a href="/feed.xml" className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] font-bold text-primary border border-primary rounded-lg px-4 py-2.5 hover:bg-primary hover:text-background transition-colors shrink-0">
@@ -113,7 +120,7 @@ export default function RSSPage() {
 
           <div className="p-4 sm:p-5 bg-muted rounded-xl text-sm text-muted-foreground">
             Questions about our RSS feeds? Contact us at{' '}
-            <a href="mailto:shivamkumarsingh8544@gmail.com" className="text-primary hover:underline">shivamkumarsingh8544@gmail.com</a>
+            <a href="mailto:gys738421@gmail.com" className="text-primary hover:underline">gys738421@gmail.com</a>
           </div>
         </motion.div>
       </main>

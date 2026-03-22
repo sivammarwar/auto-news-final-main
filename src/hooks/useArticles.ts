@@ -14,6 +14,8 @@ const SUBCATEGORY_SLUGS = new Set([
   'human-rights-movements', 'science-technology', 'religion-philosophy',
   'cultural-social', 'economic-trade', 'military-warfare',
   'regional-history', 'archaeology-mysteries', 'famous-figures',
+  // ── NEW ──
+  'beyond-human-limits', 'historys-unsung-heroes',
 ]);
 
 function isSubcategory(slug: string): boolean {

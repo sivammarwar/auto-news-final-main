@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://yourdomain.com';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
 
 const CATEGORY_SEO: Record<string, {
   title:       string;
@@ -87,6 +87,17 @@ const CATEGORY_SEO: Record<string, {
     description: 'Alexander the Great, Marie Curie, Genghis Khan — the real people behind the legends, including the parts history chose to hide.',
     keywords:    ['famous historical figures', 'Alexander the Great', 'Marie Curie', 'Genghis Khan', 'historical leaders'],
   },
+  // ── NEW CATEGORIES ──────────────────────────────────────────────────────────
+  'beyond-human-limits': {
+    title:       'Beyond Human Limits | Hidden Facts',
+    description: 'The moon landing, the first flight, the engineering feats that defied all logic — moments when humanity did what everyone said was impossible.',
+    keywords:    ['human achievement history', 'impossible feats history', 'greatest breakthroughs', 'engineering marvels', 'space history', 'human endurance'],
+  },
+  'historys-unsung-heroes': {
+    title:       "History's Unsung Heroes | Hidden Facts",
+    description: 'The nurses, the codebreakers, the ordinary people who changed history without ever getting a statue — the courage history forgot to celebrate.',
+    keywords:    ["unsung heroes history", 'forgotten heroes', 'ordinary courage historical', 'hidden history heroes', 'selfless acts history'],
+  },
 };
 
 // ─── generateMetadata for category pages ─────────────────────────────────────
@@ -133,5 +144,4 @@ export function buildCategoryMetadata(slug: string): Metadata {
 }
 
 // ─── ISR config for category pages ───────────────────────────────────────────
-// Category pages update when new articles are published
 export const CATEGORY_REVALIDATE_SECONDS = 3600; // 1 hour
