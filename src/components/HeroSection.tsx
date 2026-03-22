@@ -91,7 +91,7 @@ const HeroSection = ({ article }: HeroSectionProps) => {
           {article.image_url && (
             <div className="w-full mb-6 sm:mb-8 overflow-hidden rounded-xl">
               <img
-                src={pexelsResize(article.image_url, 800, 80)}
+                src={pexelsResize(article.image_url, 700, 75)}
                 alt={article.title}
                 width={1200}
                 height={630}
