@@ -9,22 +9,22 @@ interface HeroSectionProps {
   article: Article;
 }
 
-/**
- * Resizes a Pexels image URL to the given width.
- * Pexels supports ?w=N&q=N query params natively — no CDN needed.
- * This reduces the hero image from ~1880px (96 KB) to ~800px (~25 KB).
- */
+/*
+  FIX: Added fm=webp param — Pexels serves WebP natively when requested.
+  PageSpeed flagged the hero image as serving JPEG with 19 KiB wasted bytes.
+  WebP at equivalent quality is ~30% smaller with no visible difference.
+*/
 function pexelsResize(url: string, width = 800, quality = 80): string {
   if (!url || !url.includes('pexels.com')) return url;
   try {
     const u = new URL(url);
-    // Strip ALL existing params first — prevents saved ?w=1260 from overriding our value
     u.search = '';
     u.searchParams.set('w', String(width));
     u.searchParams.set('q', String(quality));
     u.searchParams.set('auto', 'compress');
     u.searchParams.set('cs', 'tinysrgb');
     u.searchParams.set('fit', 'crop');
+    u.searchParams.set('fm', 'webp');
     return u.toString();
   } catch {
     return url;
@@ -40,16 +40,13 @@ const HeroSection = ({ article }: HeroSectionProps) => {
 
     Fix: render a static date string on the server (same on both sides),
     then replace it with the relative time only after client hydration via useEffect.
-    This eliminates the mismatch entirely.
   */
   const [timeAgo, setTimeAgo] = useState<string>(() => {
-    // Static fallback used during SSR and initial client render — always matches
     const d = new Date(article.published_date);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   });
 
   useEffect(() => {
-    // Only runs on client after hydration — safe to use time-relative strings here
     setTimeAgo(formatDistanceToNow(new Date(article.published_date), { addSuffix: true }));
   }, [article.published_date]);
 
@@ -63,6 +60,7 @@ const HeroSection = ({ article }: HeroSectionProps) => {
           <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-4 sm:mb-5">
             <Link
               href={`/category/${article.subcategory ?? article.category}`}
+              aria-label={`Category: ${article.subcategory ?? article.category} — view all articles`}
               className="text-primary font-bold font-mono text-[11px] uppercase tracking-[0.15em] hover:underline"
             >
               {article.subcategory ?? article.category}
@@ -72,7 +70,7 @@ const HeroSection = ({ article }: HeroSectionProps) => {
             </span>
           </div>
 
-          <Link href={articleHref}>
+          <Link href={articleHref} aria-label={`Read article: ${article.title}`}>
             <h1
               className="font-bold tracking-tightest leading-[0.92] text-foreground hover:text-primary transition-colors duration-300 mb-6 sm:mb-8"
               style={{ fontSize: 'clamp(2rem, 6vw, 5rem)', textWrap: 'balance' } as React.CSSProperties}
@@ -90,11 +88,8 @@ const HeroSection = ({ article }: HeroSectionProps) => {
 
           {article.image_url && (
             /*
-              CLS FIX: Replaced max-height:55vh on the img with an aspect-ratio
-              wrapper div. When max-height was on the img directly, it overrode the
-              width/height attributes so the browser could not reserve space before
-              the image loaded, causing CLS of 0.341. The wrapper reserves exact
-              space via aspect-ratio and the img fills it with object-cover.
+              CLS FIX: aspect-ratio wrapper reserves exact space before image loads.
+              Prevents layout shift (CLS) caused by image popping in.
             */
             <div
               className="w-full mb-6 sm:mb-8 overflow-hidden rounded-xl bg-muted"
@@ -116,6 +111,7 @@ const HeroSection = ({ article }: HeroSectionProps) => {
           <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             <Link
               href={articleHref}
+              aria-label={`Read full article: ${article.title}`}
               className="inline-flex items-center font-mono text-sm font-bold border-b-2 border-foreground pb-0.5 hover:text-primary hover:border-primary transition-all"
             >
               READ MORE →
