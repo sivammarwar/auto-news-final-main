@@ -84,8 +84,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           as a preconnect candidate with est. 300ms LCP savings — it's the
           Google consent/funding choices script that loads with AdSense.
         */}
-        <link rel="preconnect" href="https://fundingchoicesmessages.google.com" crossOrigin="" />
-        <link rel="dns-prefetch" href="https://fundingchoicesmessages.google.com" />
+        {/*
+          PERF FIX: Preload the logo — PageSpeed identified the logo as the LCP
+          element with 1,610ms element render delay. Preloading tells the browser
+          to fetch it immediately instead of waiting for CSS/JS to parse first.
+        */}
+        <link rel="preload" as="image" href="/logo.webp" />
+
+        {/*
+          PERF FIX: Pexels preconnect back — PageSpeed recommends it for 310ms
+          LCP savings (hero image origin). FundingChoices is handled by AdSense
+          automatically so no need to preconnect manually.
+        */}
+        <link rel="preconnect" href="https://images.pexels.com" crossOrigin="" />
         <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com" />
 
