@@ -9,7 +9,7 @@ export interface Article {
   summary:        string;
   raw_content:    string | null;
   category:       string;          // always 'history' for this site
-  subcategory:    string | null;   // one of the 15 slugs e.g. 'ancient-civilizations'
+  subcategory:    string | null;   // one of the 17 slugs e.g. 'ancient-civilizations'
   era:            string | null;   // 'ancient' | 'medieval' | 'early-modern' | 'modern' | 'all'
   difficulty:     string | null;   // 'known' | 'hidden' | 'both'
   score:          number | null;

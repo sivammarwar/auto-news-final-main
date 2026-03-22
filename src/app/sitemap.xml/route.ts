@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// All 15 history subcategory slugs + the top-level catch-all
+// All 17 history subcategory slugs + the top-level catch-all
 const HISTORY_SUBCATEGORIES = [
   'ancient-civilizations',
   'medieval-feudal',
@@ -23,6 +23,9 @@ const HISTORY_SUBCATEGORIES = [
   'regional-history',
   'archaeology-mysteries',
   'famous-figures',
+  // ── NEW ──
+  'beyond-human-limits',
+  'historys-unsung-heroes',
 ];
 
 const FREQ = {
@@ -90,7 +93,7 @@ export async function GET(req: NextRequest) {
     // ── Top-level history page ────────────────────────────────────────────
     urls.push(buildUrl(domain, '/category/history', 0.9, FREQ.category, today));
 
-    // ── All 15 subcategory pages ──────────────────────────────────────────
+    // ── All 17 subcategory pages ──────────────────────────────────────────
     HISTORY_SUBCATEGORIES.forEach(slug => {
       urls.push(buildUrl(domain, `/category/${slug}`, 0.9, FREQ.category, today));
     });
