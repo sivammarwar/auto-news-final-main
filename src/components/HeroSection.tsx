@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Article } from '@/types/article';
 import { formatDistanceToNow } from 'date-fns';
+import { useState, useEffect } from 'react';
 
 interface HeroSectionProps {
   article: Article;
@@ -25,7 +26,27 @@ function pexelsResize(url: string, width = 800, quality = 80): string {
 }
 
 const HeroSection = ({ article }: HeroSectionProps) => {
-  const timeAgo    = formatDistanceToNow(new Date(article.published_date), { addSuffix: true });
+  /*
+    HYDRATION FIX (React error #418):
+    formatDistanceToNow() produces a time-dependent string like "19 minutes ago".
+    When Next.js SSR runs it on the server, then React hydrates on the client
+    a few milliseconds later, the two strings don't match → hydration mismatch.
+
+    Fix: render a static date string on the server (same on both sides),
+    then replace it with the relative time only after client hydration via useEffect.
+    This eliminates the mismatch entirely.
+  */
+  const [timeAgo, setTimeAgo] = useState<string>(() => {
+    // Static fallback used during SSR and initial client render — always matches
+    const d = new Date(article.published_date);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  });
+
+  useEffect(() => {
+    // Only runs on client after hydration — safe to use time-relative strings here
+    setTimeAgo(formatDistanceToNow(new Date(article.published_date), { addSuffix: true }));
+  }, [article.published_date]);
+
   const articleHref = `/article/${article.slug ?? article.id}`;
 
   return (
@@ -64,15 +85,6 @@ const HeroSection = ({ article }: HeroSectionProps) => {
           {article.image_url && (
             <div className="w-full mb-6 sm:mb-8 overflow-hidden rounded-xl">
               <img
-                /*
-                  LCP IMAGE FIX:
-                  - pexelsResize() adds ?w=800&q=80 — reduces from ~96 KB to ~25 KB
-                  - width/height kept at 1200/630 for correct aspect ratio reservation
-                  - loading="eager" + fetchPriority="high" already correct — kept as-is
-                  - decoding="sync" already correct for LCP — kept as-is
-                  
-                  For card images (lazy loaded), use pexelsResize(url, 640, 75) instead.
-                */
                 src={pexelsResize(article.image_url, 800, 80)}
                 alt={article.title}
                 width={1200}

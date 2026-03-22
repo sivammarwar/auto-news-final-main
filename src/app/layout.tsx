@@ -76,8 +76,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           - AdSense: must stay for ad revenue
           Supabase is server-side only so browser preconnect is wasted.
         */}
-        <link rel="preconnect" href="https://images.pexels.com" crossOrigin="" />
-        <link rel="dns-prefetch" href="https://images.pexels.com" />
+        {/*
+          PERF FIX: Swapped Pexels preconnect for fundingchoicesmessages.google.com.
+          PageSpeed flagged Pexels as "unused preconnect" on the homepage
+          (hero image loads after hydration so the preconnect is wasted).
+          PageSpeed specifically recommended fundingchoicesmessages.google.com
+          as a preconnect candidate with est. 300ms LCP savings — it's the
+          Google consent/funding choices script that loads with AdSense.
+        */}
+        <link rel="preconnect" href="https://fundingchoicesmessages.google.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://fundingchoicesmessages.google.com" />
         <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com" />
 
