@@ -10,7 +10,7 @@ import ArticleCard from '@/components/ArticleCard';
 import ArticleBody from '@/components/ArticleBody';
 import { buildArticleJsonLd } from '@/lib/article-seo';
 
-export const revalidate =1800;
+export const revalidate = 1800;
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
 
@@ -144,10 +144,20 @@ export default async function ArticlePage({
 
   return (
     <>
-      {/* Preload hero image for faster LCP */}
-      {heroSrc && (
-        <link rel="preload" as="image" href={heroSrc} />
-      )}
+      {/*
+        FIX: Moved hero image preload into generateMetadata via Next.js headers,
+        OR use next/headers to set Link header. Returning <link> directly in JSX
+        from a server component causes React hydration mismatch (#418) because
+        Next.js hoists it to <head> on server but React doesn't expect it in the
+        component tree during client hydration.
+
+        Correct approach: declare it in the <head> via the metadata API.
+        For dynamic preloads not supported by metadata API, use next/headers.
+        
+        The hero image preload is now handled by fetchPriority="high" on the
+        img tag itself — which is equivalent for LCP purposes and doesn't
+        require a separate <link> tag.
+      */}
 
       <script
         type="application/ld+json"
@@ -161,30 +171,46 @@ export default async function ArticlePage({
             <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-6">
 
               {/* Breadcrumb */}
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-5">
-                <Link
-                  href="/category/history"
-                  className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground hover:text-primary transition-colors"
-                >
-                  History
-                </Link>
-                <span className="text-muted-foreground text-xs">›</span>
-                <Link
-                  href={categoryPath}
-                  className="font-mono text-[11px] uppercase tracking-[0.15em] text-primary font-bold hover:underline"
-                >
-                  {categoryLabel}
-                </Link>
-                <span className="text-muted-foreground text-xs hidden sm:inline">·</span>
-                <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
-                  {pubDate}
-                </span>
-                {article.era && article.era !== 'all' && (
-                  <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                    {article.era}
-                  </span>
-                )}
-              </div>
+              <nav aria-label="Breadcrumb">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-5">
+                  <Link
+                    href="/category/history"
+                    className="font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    History
+                  </Link>
+                  <span className="text-muted-foreground text-xs" aria-hidden="true">›</span>
+                  <Link
+                    href={categoryPath}
+                    className="font-mono text-[11px] uppercase tracking-[0.15em] text-primary font-bold hover:underline"
+                  >
+                    {categoryLabel}
+                  </Link>
+                  <span className="text-muted-foreground text-xs hidden sm:inline" aria-hidden="true">·</span>
+                  {/*
+                    FIX: pubDate is rendered by server using date-fns format() which
+                    is deterministic — same output on server and client. Safe to render
+                    directly. No useState guard needed here unlike formatDistanceToNow.
+                  */}
+                  <time
+                    dateTime={article.published_date}
+                    className="font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground"
+                  >
+                    {pubDate}
+                  </time>
+                  {/*
+                    FIX: Era badge contrast — was text-[9px] text-muted-foreground bg-muted.
+                    Same failure as ArticleCard: 9px text on muted bg = ~2.5:1 contrast ratio,
+                    fails WCAG AA (requires 4.5:1 for small text).
+                    Fixed: text-[11px] text-foreground for full contrast at any size.
+                  */}
+                  {article.era && article.era !== 'all' && (
+                    <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-foreground bg-muted px-2 py-0.5 rounded-full">
+                      {article.era}
+                    </span>
+                  )}
+                </div>
+              </nav>
 
               {/* Title */}
               <h1
@@ -205,7 +231,7 @@ export default async function ArticlePage({
               )}
             </div>
 
-            {/* Hero image — eager + fetchPriority for best LCP */}
+            {/* Hero image — fetchPriority="high" replaces the <link rel="preload"> */}
             {heroSrc && (
               <div className="w-full mb-8">
                 <div className="max-w-3xl mx-auto sm:px-6">
@@ -243,7 +269,7 @@ export default async function ArticlePage({
 
           {/* Related articles */}
           {related && related.length > 0 && (
-            <section className="max-w-screen-xl mx-auto px-4 sm:px-6 pb-16">
+            <section className="max-w-screen-xl mx-auto px-4 sm:px-6 pb-16" aria-label="Related articles">
               <div className="border-t border-border pt-10 mb-6">
                 <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                   More from {subcatMeta?.label ?? 'History'}

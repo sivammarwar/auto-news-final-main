@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: { allowedOrigins: ['hiddenhistoryfacts.com', 'www.hiddenhistoryfacts.com'] },
+    optimizeCss: true, // Inlines critical CSS → eliminates render-blocking chunk
   },
 };
 
