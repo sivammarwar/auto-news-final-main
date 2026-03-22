@@ -12,8 +12,13 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: { allowedOrigins: ['hiddenhistoryfacts.com', 'www.hiddenhistoryfacts.com'] },
-    // optimizeCss removed — causes 4,570ms TBT regression on mobile with Next.js 16 + React 19
   },
+  /*
+    SWC minification is default in Next.js 15+ so no need to set swcMinify.
+    The legacy JS polyfills (Array.at, Object.hasOwn etc.) are coming from
+    dependencies like framer-motion/date-fns, not your own code.
+    Nothing to configure here — it's a dependency issue, not a build target issue.
+  */
 };
 
 export default nextConfig;
