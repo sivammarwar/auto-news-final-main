@@ -197,7 +197,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const isManual: boolean = body?.manual === true;
 
-  console.log(`\n🏛️ generate-history called — manual: ${isManual}`);
+  // ── FIX: respect subcategory from request body ───────────────────────────
+  const requestedSubcat: string | undefined = body?.subcategory;
+  const allKeys = requestedSubcat && HISTORY_CATEGORIES[requestedSubcat]
+    ? [requestedSubcat]
+    : Object.keys(HISTORY_CATEGORIES);
+  // ─────────────────────────────────────────────────────────────────────────
+
+  console.log(`\n🏛️ generate-history called — manual: ${isManual} | subcategory: ${requestedSubcat ?? 'ALL'}`);
 
   await setSetting(db, 'schedule_status',   'running');
   await setSetting(db, 'schedule_last_run', new Date().toISOString());
@@ -208,8 +215,7 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const allKeys = Object.keys(HISTORY_CATEGORIES);
-    console.log(`📋 Running all ${allKeys.length} categories × ${ARTICLES_PER_CATEGORY} article each`);
+    console.log(`📋 Running ${allKeys.length} category(ies): ${allKeys.join(', ')}`);
 
     for (const subcatKey of allKeys) {
       const catConfig    = HISTORY_CATEGORIES[subcatKey];
@@ -287,13 +293,13 @@ export async function POST(req: NextRequest) {
           const imgQ    = Array.isArray(meta?.image_queries) ? meta.image_queries : catConfig.imageQueries.slice(0, 4);
 
           // ── Generate unique SEO slug from title ──────────────────────────
-          const baseSlug   = generateSlug(title);
+          const baseSlug    = generateSlug(title);
           const articleSlug = await uniqueSlug(db, baseSlug);
           console.log(`   🔗 Slug: ${articleSlug}`);
 
           const { data: saved, error: saveErr } = await db.from('articles').insert({
             title: title.substring(0, 255),
-            slug: articleSlug,                    // ← slug saved here
+            slug: articleSlug,
             source_url: null,
             source_name: AUTHOR.name,
             summary: summary.substring(0, 500),
