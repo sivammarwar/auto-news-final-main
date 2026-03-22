@@ -67,8 +67,8 @@ const SiteHeader = () => {
             <img
               src="/logo.webp"
               alt="Hidden Facts"
-              width={102}
-              height={112}
+              width={132}
+              height={145}
               className="h-12 w-auto object-contain"
               fetchPriority="high"
             />
