@@ -52,7 +52,7 @@ const SiteHeader = () => {
   return (
     <>
       <header className="sticky top-0 z-50 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
-        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-4">
+        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-16 sm:h-16 flex items-center justify-between gap-4">
 
           {/* Logo */}
           <Link
@@ -69,15 +69,15 @@ const SiteHeader = () => {
               alt="Hidden Facts logo"
               width={132}
               height={145}
-              className="h-14 w-[51px] object-contain"
+              className="h-16 w-auto object-contain"
               fetchPriority="high"
             />
             <div className="flex flex-col leading-tight">
-              <span className="font-bold text-sm tracking-tight text-foreground">
+              <span className="font-bold text-xl tracking-tight text-foreground">
                 Hidden Facts
               </span>
               <span 
-              className="font-mono text-[8px] uppercase tracking-[0.15em] text-muted-foreground"
+              className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground"
               aria-hidden="true"
               >
                 The History Books Left This Out
