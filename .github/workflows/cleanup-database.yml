@@ -2,7 +2,7 @@ name: Cleanup Database
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 5:30 AM IST daily (UTC 0:00 = IST 5:30)
+    - cron: "0 6 * * *"   # 5:30 AM IST daily (UTC 0:00 = IST 5:30)
   workflow_dispatch:
 
 jobs:
@@ -13,7 +13,6 @@ jobs:
       - name: Trigger cleanup
         run: |
           RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            -L \
             -X GET "${{ secrets.SITE_URL }}/api/cron/cleanup-database" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             --max-time 60)
