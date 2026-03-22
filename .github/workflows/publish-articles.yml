@@ -2,7 +2,7 @@ name: Publish Articles
 
 on:
   schedule:
-    - cron: "30 23 * * *"   # 5:00 AM IST daily (UTC 18:30 = IST 00:00)
+    - cron: "30 0 * * *"  # 5:00 AM IST daily (UTC 18:30 = IST 00:00)
   workflow_dispatch:
 
 jobs:

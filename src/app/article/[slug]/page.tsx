@@ -10,7 +10,7 @@ import ArticleCard from '@/components/ArticleCard';
 import ArticleBody from '@/components/ArticleBody';
 import { buildArticleJsonLd } from '@/lib/article-seo';
 
-export const revalidate =0;
+export const revalidate =1800;
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
 
