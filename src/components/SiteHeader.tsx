@@ -66,10 +66,10 @@ const SiteHeader = () => {
             */}
             <img
               src="/logo.webp"
-              alt="Hidden Facts"
+              alt="Hidden Facts logo"
               width={132}
               height={145}
-              className="h-12 w-16 object-contain"
+              className="h-12 w-[44px] object-contain"
               fetchPriority="high"
             />
             <div className="flex flex-col leading-tight">
