@@ -58,23 +58,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/* AdSense account verification — required by Google */}
+        {/* AdSense account verification — required by Google, must stay in <head> */}
         <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
 
         <style>{`
           *, *::before, *::after { font-synthesis: none; }
 
           /*
-            CLS FIX: Pre-reserve space for Auto Ads slots BEFORE they load.
-            Auto Ads injects <ins class="adsbygoogle"> elements dynamically
-            after JS executes. Without reserved height, the injected ad pushes
-            all content below it down → CLS 0.196.
-
-            By giving every adsbygoogle element a min-height matching the
-            smallest possible ad unit, the page layout is already accounting
-            for that space before the ad fills in → no shift.
-
-            display:block is mandatory — AdSense will not render without it.
+            CLS FIX: Pre-reserve space for Auto Ads slots.
+            Without this, Auto Ads injects banners that push content down → CLS.
+            min-height reserves the space before the ad fills in → no shift.
           */
           ins.adsbygoogle {
             display: block !important;
@@ -82,19 +75,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }
 
           /*
-            Anchor ads (sticky bottom bar) are position:fixed so they
-            don't cause CLS directly, but they do cover content.
-            Adding bottom padding to body prevents content being hidden
-            behind the anchor ad on mobile (typical anchor = 50px tall).
+            Anchor ads are position:fixed so don't cause CLS directly,
+            but they cover bottom content on mobile. Reserve 60px padding.
           */
           @media (max-width: 768px) {
-            body {
-              padding-bottom: 60px;
-            }
+            body { padding-bottom: 60px; }
           }
         `}</style>
 
-        {/* Preload logo — LCP element on most pages */}
+        {/* Preload logo — it is the LCP element, fetch immediately */}
         <link rel="preload" as="image" href="/logo.webp" />
 
         {/* Pexels preconnect — hero image origin, saves ~300ms on LCP */}
@@ -107,30 +96,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Analytics />
 
         {/*
-          PERF FIX: Moved AdSense from <head> <script> to Next.js <Script>
-          with strategy="afterInteractive".
+          FIX: Changed strategy from "afterInteractive" → "lazyOnload".
 
-          Original problem: a raw <script async> in <head> still blocks the
-          critical request chain — the browser must resolve it before first paint,
-          adding ~500ms to FCP/LCP even with the async attribute.
+          Problem with afterInteractive on mobile:
+          - On slow 4G, afterInteractive fires right after hydration
+          - This puts AdSense execution on the main thread simultaneously
+            with React hydration → 1,120ms element render delay on LCP
+          - Worse: Auto Ads was triggering a SECOND load of adsbygoogle.js
+            (the ?fcd=true variant), doubling the AdSense payload to 110 KiB
 
-          strategy="afterInteractive" tells Next.js to inject this script only
-          after the page is fully hydrated and interactive. This means:
-          - FCP and LCP are no longer blocked by AdSense
-          - The script still loads on every page automatically (no code changes needed)
-          - Auto Ads works exactly as before — it scans the page and injects ads
-          - Once your AdSense account is approved, ads appear with zero code changes
-
-          The trade-off: ads appear ~1-2 seconds later than before.
-          For a pending account this makes no difference. Once approved,
-          users see content first, ads second — which is actually better UX.
+          lazyOnload fires only when the browser is completely idle —
+          after all critical content has painted and the user can interact.
+          This means:
+          - LCP renders unblocked (no main thread contention)
+          - No duplicate script load (idle-time load avoids the race condition)
+          - Ads still appear automatically once approved, zero code changes needed
+          - On desktop (fast connection) the difference is imperceptible
+          - On mobile (slow 4G) this saves ~1,000ms of render delay
         */}
         <Script
           id="adsense"
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880"
           crossOrigin="anonymous"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
       </body>
     </html>
