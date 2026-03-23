@@ -2,7 +2,7 @@ name: Cleanup Database
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 5:30 AM IST daily (UTC 0:00 = IST 5:30)
+    - cron: "0 23 * * *"    # 4:30 AM IST
   workflow_dispatch:
 
 jobs:

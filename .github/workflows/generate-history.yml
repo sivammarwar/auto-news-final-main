@@ -2,7 +2,7 @@ name: Generate History Articles
 
 on:
   schedule:
-    - cron: "30 22 * * *"   # 10:30 PM UTC = 4:00 AM IST (next day)
+    - cron: "30 22 * * *"  # 4:00 AM IST
   workflow_dispatch:
 
 jobs:
@@ -144,10 +144,29 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"manual":true,"subcategory":"famous-figures"}' \
             --max-time 55 || true
+          sleep 10
+
+      - name: Generate - beyond-human-limits
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"beyond-human-limits"}' \
+            --max-time 55 || true
+          sleep 10
+
+      - name: Generate - historys-unsung-heroes
+        run: |
+          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/generate-history" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"manual":true,"subcategory":"historys-unsung-heroes"}' \
+            --max-time 55 || true
+          sleep 10
 
       - name: Summary
         if: always()
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ All 15 categories triggered at $(date)"
+          echo "✅ All 17 categories triggered at $(date)"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -1,19 +1,12 @@
 // src/app/page.tsx
-// CONVERTED FROM CLIENT → SERVER COMPONENT
-// This eliminates the 0.592 CLS entirely — previously the page rendered a
-// loading spinner first, then articles popped in, pushing the footer down.
-// Now Supabase is fetched server-side, HTML is fully rendered before the
-// browser sees it, so there is no layout shift at all.
-
 import { createClient } from '@supabase/supabase-js';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import HeroSection from '@/components/HeroSection';
-import ArticleCard from '@/components/ArticleCard';
 import EmptyState from '@/components/EmptyState';
+import ArticleGrid from '@/components/ArticleGrid';  // NEW
 import Link from 'next/link';
 
-// ISR: revalidate every 30 minutes so new articles appear without a full rebuild
 export const revalidate = 1800;
 
 const QUICK_LINKS = [
@@ -47,7 +40,7 @@ async function getArticles() {
     .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
     .eq('is_published', true)
     .order('published_date', { ascending: false })
-    .limit(13); // 1 hero + 12 grid
+    .limit(100); // fetch up to 100; ArticleGrid handles pagination
 
   if (error) {
     console.error('Failed to fetch articles:', error);
@@ -91,19 +84,8 @@ export default async function Home() {
               </div>
             </div>
 
-            {/* Latest articles grid */}
-            <section className="max-w-screen-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
-              <div className="mb-6 sm:mb-8">
-                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Latest history
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0">
-                {gridArticles.map((article, i) => (
-                  <ArticleCard key={article.id} article={article as any} index={i} />
-                ))}
-              </div>
-            </section>
+            {/* ArticleGrid handles search + load more */}
+            <ArticleGrid articles={gridArticles as any[]} />
           </>
         )}
       </main>
