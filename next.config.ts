@@ -23,6 +23,7 @@ const securityHeaders = [
         'https://*.googlesyndication.com',
         'https://*.adtrafficquality.google',
         'https://va.vercel-scripts.com',
+        'https://fundingchoicesmessages.google.com', // ← AdSense consent script
       ].join(' '),
       "style-src 'self' 'unsafe-inline'",
       [
@@ -51,6 +52,7 @@ const securityHeaders = [
         'https://*.doubleclick.net',
         'https://adservice.google.com',
         'https://va.vercel-scripts.com',
+        'https://fundingchoicesmessages.google.com', // ← AdSense consent API calls
       ].join(' '),
       [
         'frame-src',
@@ -72,10 +74,6 @@ const nextConfig: NextConfig = {
     serverActions: {
       allowedOrigins: ['hiddenhistoryfacts.com', 'www.hiddenhistoryfacts.com'],
     },
-    // ── FIX: Eliminate render-blocking CSS (saves 140-170ms on FCP/LCP) ──
-    // Critters inlines the critical CSS needed for above-the-fold content
-    // directly into the HTML, then loads the rest asynchronously.
-    // Run: npm i critters
     optimizeCss: true,
   },
 
