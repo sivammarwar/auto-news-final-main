@@ -7,8 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.4"
   }
@@ -108,8 +106,10 @@ export type Database = {
           admin_notes: string | null
           category: string
           created_at: string
+          deleted_at: string | null        // ── added: soft-delete timestamp
           difficulty: string | null
           era: string | null
+          fts: unknown | null              // ── added: tsvector full-text search index
           id: number
           image_url: string | null
           is_draft: boolean | null
@@ -118,6 +118,7 @@ export type Database = {
           raw_content: string | null
           scheduled_publish_date: string | null
           score: number | null
+          slug: string | null              // ── added: SEO-friendly URL slug
           source_name: string
           source_url: string | null
           subcategory: string | null
@@ -129,8 +130,10 @@ export type Database = {
           admin_notes?: string | null
           category: string
           created_at?: string
+          deleted_at?: string | null
           difficulty?: string | null
           era?: string | null
+          // fts is GENERATED ALWAYS — never insert/update directly
           id?: number
           image_url?: string | null
           is_draft?: boolean | null
@@ -139,6 +142,7 @@ export type Database = {
           raw_content?: string | null
           scheduled_publish_date?: string | null
           score?: number | null
+          slug?: string | null
           source_name: string
           source_url?: string | null
           subcategory?: string | null
@@ -150,8 +154,10 @@ export type Database = {
           admin_notes?: string | null
           category?: string
           created_at?: string
+          deleted_at?: string | null
           difficulty?: string | null
           era?: string | null
+          // fts is GENERATED ALWAYS — never insert/update directly
           id?: number
           image_url?: string | null
           is_draft?: boolean | null
@@ -160,6 +166,7 @@ export type Database = {
           raw_content?: string | null
           scheduled_publish_date?: string | null
           score?: number | null
+          slug?: string | null
           source_name?: string
           source_url?: string | null
           subcategory?: string | null
@@ -195,6 +202,7 @@ export type Database = {
           subcategory: string
           topic: string
           topic_key: string
+          updated_at: string               // ── added: was missing, added in migration
         }
         Insert: {
           created_at?: string
@@ -203,6 +211,7 @@ export type Database = {
           subcategory: string
           topic: string
           topic_key: string
+          updated_at?: string
         }
         Update: {
           created_at?: string
@@ -211,6 +220,7 @@ export type Database = {
           subcategory?: string
           topic?: string
           topic_key?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -254,7 +264,30 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      check_is_admin: {
+        Args: { p_token: string }
+        Returns: boolean
+      }
+      generate_unique_slug: {
+        Args: { p_title: string; p_exclude_id?: number }
+        Returns: string
+      }
+      increment_rate_limit: {
+        Args: { p_identifier: string; p_action: string; p_max?: number }
+        Returns: boolean
+      }
+      purge_deleted_articles: {
+        Args: Record<string, never>
+        Returns: number
+      }
+      refresh_category_counts: {
+        Args: Record<string, never>
+        Returns: undefined
+      }
+      soft_delete_article: {
+        Args: { p_id: number }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

@@ -1,6 +1,13 @@
 // Previously used OpenAI for summarization and scoring.
 // Now uses Groq (llama-3.3-70b) — same functions, same signatures,
 // no breaking changes to code that imports this file.
+//
+// ── KEY SECURITY NOTE ────────────────────────────────────────────────────────
+// This file must only be imported from server-side code (API routes, server
+// components). The Groq keys have no NEXT_PUBLIC_ prefix — they are never
+// bundled into the browser. If you need Groq in a client component, call
+// an API route instead.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const GROQ_TIMEOUT_MS = 20_000;
 
@@ -10,13 +17,13 @@ async function groqChat(
   temperature = 0.4
 ): Promise<string | null> {
   const keys = [
-    process.env.NEXT_PUBLIC_GROQ_API_KEY,
-    process.env.NEXT_PUBLIC_GROQ_API_KEY_2,
-    process.env.NEXT_PUBLIC_GROQ_API_KEY_3,
+    process.env.GROQ_API_KEY,        // ── CHANGED: removed NEXT_PUBLIC_ prefix
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3,
   ].filter(Boolean) as string[];
 
   if (keys.length === 0) {
-    console.error('groqChat: no NEXT_PUBLIC_GROQ_API_KEY set');
+    console.error('groqChat: no GROQ_API_KEY set');
     return null;
   }
 
@@ -51,8 +58,6 @@ async function groqChat(
 }
 
 // ─── summarizeArticle ─────────────────────────────────────────────────────────
-// Drop-in replacement for the old OpenAI version.
-// Used to generate a 2-3 sentence teaser summary for history articles.
 export const summarizeArticle = async (
   title: string,
   content: string
@@ -84,8 +89,6 @@ export const summarizeArticle = async (
 };
 
 // ─── scoreArticle ─────────────────────────────────────────────────────────────
-// Drop-in replacement for the old OpenAI version.
-// Scores a history article 0-10 on accuracy, depth, engagement, and originality.
 export const scoreArticle = async (
   title: string,
   summary: string,
@@ -120,8 +123,6 @@ export const scoreArticle = async (
 };
 
 // ─── generateHistoryTitle ─────────────────────────────────────────────────────
-// NEW helper (no OpenAI equivalent) — generates a compelling article title
-// from a topic string. Used in the admin pipeline as a fallback.
 export const generateHistoryTitle = async (
   topic: string,
   subcategory: string

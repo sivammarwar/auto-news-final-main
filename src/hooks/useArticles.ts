@@ -14,7 +14,6 @@ const SUBCATEGORY_SLUGS = new Set([
   'human-rights-movements', 'science-technology', 'religion-philosophy',
   'cultural-social', 'economic-trade', 'military-warfare',
   'regional-history', 'archaeology-mysteries', 'famous-figures',
-  // ── NEW ──
   'beyond-human-limits', 'historys-unsung-heroes',
 ]);
 
@@ -30,6 +29,7 @@ export function useArticles(slug?: string, limit = 50) {
         .from('articles')
         .select(FIELDS)
         .eq('is_published', true)
+        .is('deleted_at', null)          // ── exclude soft-deleted articles
         .order('published_date', { ascending: false })
         .limit(limit);
 
@@ -54,11 +54,12 @@ export function useArticle(slugOrId: string) {
     queryKey: ['article', slugOrId],
     queryFn: async () => {
       // Try slug first (new SEO-friendly URLs)
-      const { data: bySlug, error: slugError } = await supabase
+      const { data: bySlug } = await supabase
         .from('articles')
         .select(FIELDS)
         .eq('slug', slugOrId)
         .eq('is_published', true)
+        .is('deleted_at', null)          // ── exclude soft-deleted articles
         .single();
 
       if (bySlug) return bySlug as unknown as Article;
@@ -72,6 +73,7 @@ export function useArticle(slugOrId: string) {
         .select(FIELDS)
         .eq('id', numericId)
         .eq('is_published', true)
+        .is('deleted_at', null)          // ── exclude soft-deleted articles
         .single();
 
       if (idError?.code === 'PGRST116') return null;
@@ -93,6 +95,7 @@ export function useRelatedArticles(article: Article | null, limit = 4) {
         .from('articles')
         .select(FIELDS)
         .eq('is_published', true)
+        .is('deleted_at', null)          // ── exclude soft-deleted articles
         .neq('id', article.id)
         .order('score', { ascending: false })
         .limit(limit);
@@ -114,6 +117,7 @@ export function useRelatedArticles(article: Article | null, limit = 4) {
           .select(FIELDS)
           .eq('category', article.category)
           .eq('is_published', true)
+          .is('deleted_at', null)        // ── exclude soft-deleted articles
           .not('id', 'in', `(${existingIds.join(',')})`)
           .order('score', { ascending: false })
           .limit(needed);

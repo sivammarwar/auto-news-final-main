@@ -40,20 +40,19 @@ const securityHeaders = [
         'https://googleads.g.doubleclick.net',
         'https://*.googlesyndication.com',
         'https://*.doubleclick.net',
-        // AdSense sodar loads tracking pixels from this domain
         'https://*.adtrafficquality.google',
       ].join(' '),
 
       "font-src 'self'",
 
-      // Connect: own + Supabase + APIs + Google Ads + Vercel Analytics
+      // Connect: own + Supabase + Wikimedia (client-side image search) + Google Ads + Vercel
+      // NOTE: Groq and Pexels are server-side only — removed from connect-src
       [
         "connect-src 'self'",
         'https://*.supabase.co',
         'wss://*.supabase.co',
-        'https://api.groq.com',
-        'https://api.pexels.com',
-        'https://en.wikipedia.org',
+        'https://en.wikipedia.org',         // Wikimedia image search (client-side in AdminPanel)
+        'https://api.pexels.com',           // Pexels image search (client-side in AdminPanel)
         'https://www.googletagmanager.com',
         'https://pagead2.googlesyndication.com',
         'https://*.adtrafficquality.google',
@@ -86,8 +85,7 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**.pexels.com' },
       { protocol: 'https', hostname: '**.wikimedia.org' },
       { protocol: 'https', hostname: '**.wikipedia.org' },
-      { protocol: 'https', hostname: '**.omdbapi.com' },
-      { protocol: 'https', hostname: '**.m.media-amazon.com' },
+      // ── REMOVED: omdbapi.com and m.media-amazon.com (leftover from old news site)
     ],
   },
   experimental: {

@@ -6,9 +6,13 @@ export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   {
     auth: {
-      persistSession: true,
-      autoRefreshToken: true,
+      // No user auth on this site — disable session persistence to avoid
+      // unnecessary localStorage reads on every page load.
+      persistSession:      false,   // ── CHANGED
+      autoRefreshToken:    false,   // ── CHANGED
+      detectSessionInUrl:  false,   // ── CHANGED
     },
+    db: { schema: 'public' },
   }
 );
 
@@ -16,18 +20,16 @@ export const supabase = createClient(
 export const createSupabaseAdmin = () =>
   createClient(
     process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { db: { schema: 'public' } }
   );
 
 // ════════════════════════════════════════════════════════════════════════════
 // DEDUPLICATION
-// Checks source_url uniqueness (for any articles that still carry a URL)
-// and also checks title similarity to avoid near-duplicate history articles.
 // ════════════════════════════════════════════════════════════════════════════
 export const deduplicateArticles = async (articles: any[]) => {
   if (articles.length === 0) return articles;
 
-  // URL deduplication (titles without URLs are always kept at this stage)
   const urls = articles.map((a: any) => a.sourceUrl).filter(Boolean);
   if (urls.length > 0) {
     const { data: existing, error } = await supabase
@@ -78,7 +80,6 @@ export const updateArticleScore = async (
 };
 
 // ─── getArticlesForPublishing ─────────────────────────────────────────────────
-// Fetches history drafts that meet the quality bar for auto-publishing.
 export const getArticlesForPublishing = async (limit = 50) => {
   const { data, error } = await supabase
     .from('articles')
@@ -86,7 +87,9 @@ export const getArticlesForPublishing = async (limit = 50) => {
     .eq('category', 'history')
     .eq('is_published', false)
     .eq('is_draft', true)
+    .is('deleted_at', null)          // ── CHANGED: exclude soft-deleted
     .gt('score', 7.5)
+    .not('image_url', 'is', null)    // ── CHANGED: require image like publish pipeline
     .order('score', { ascending: false })
     .order('published_date', { ascending: false })
     .limit(limit);
@@ -114,7 +117,6 @@ export const markArticlesAsPublished = async (ids: number[]) => {
 };
 
 // ─── getPublishedArticles ─────────────────────────────────────────────────────
-// Supports filtering by top-level category OR subcategory.
 export const getPublishedArticles = async (
   slug: string | null = null,
   limit = 20,
@@ -124,17 +126,16 @@ export const getPublishedArticles = async (
     .from('articles')
     .select('*')
     .eq('is_published', true)
+    .is('deleted_at', null)          // ── CHANGED: exclude soft-deleted
     .order('published_date', { ascending: false });
 
   if (slug) {
-    // Determine if the slug is a subcategory or top-level category
     const subcategorySlugs = [
       'ancient-civilizations', 'medieval-feudal', 'age-of-exploration',
       'revolutions-politics', 'world-wars-conflicts', 'colonial-imperial',
       'human-rights-movements', 'science-technology', 'religion-philosophy',
       'cultural-social', 'economic-trade', 'military-warfare',
       'regional-history', 'archaeology-mysteries', 'famous-figures',
-      // ── NEW ──
       'beyond-human-limits', 'historys-unsung-heroes',
     ];
     if (subcategorySlugs.includes(slug)) {
@@ -153,7 +154,6 @@ export const getPublishedArticles = async (
 };
 
 // ─── getArticlesByEra ─────────────────────────────────────────────────────────
-// NEW — fetch articles filtered by era label (ancient, medieval, modern, etc.)
 export const getArticlesByEra = async (
   era: string,
   limit = 20,
@@ -163,6 +163,7 @@ export const getArticlesByEra = async (
     .from('articles')
     .select('*')
     .eq('is_published', true)
+    .is('deleted_at', null)          // ── CHANGED: exclude soft-deleted
     .eq('era', era)
     .order('published_date', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -174,8 +175,6 @@ export const getArticlesByEra = async (
 };
 
 // ─── getCoveredTopics ─────────────────────────────────────────────────────────
-// NEW — returns recently covered article titles per subcategory.
-// Used by the admin pipeline to avoid repeating topics.
 export const getCoveredTopics = async (
   subcategory: string,
   limit = 30
@@ -184,6 +183,7 @@ export const getCoveredTopics = async (
     .from('articles')
     .select('title')
     .eq('subcategory', subcategory)
+    .is('deleted_at', null)          // ── CHANGED: exclude soft-deleted
     .order('published_date', { ascending: false })
     .limit(limit);
   if (error) {
