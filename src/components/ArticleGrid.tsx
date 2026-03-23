@@ -157,7 +157,7 @@ export default function ArticleGrid({ articles }: Props) {
             </svg>
             Load more articles
           </button>
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground/80">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
             {remaining} more article{remaining !== 1 ? 's' : ''} remaining
           </span>
         </div>
