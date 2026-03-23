@@ -114,9 +114,9 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
             width={400}
             height={225}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            loading="lazy"
-            fetchPriority="auto"
-            decoding="async"
+            loading={index === 0 ? 'eager' : 'lazy'}
+            fetchPriority={index === 0 ? 'high' : 'auto'}
+            decoding={index === 0 ? 'sync' : 'async'}
           />
         </div>
       )}
