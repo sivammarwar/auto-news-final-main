@@ -29,6 +29,25 @@ const QUICK_LINKS = [
   { label: '⭐ Unsung Heroes',  path: '/category/historys-unsung-heroes' },
 ];
 
+// Same resize function as HeroSection — must match exactly so preload URL
+// matches the actual <img> src the browser will request
+function pexelsResize(url: string, width = 700, quality = 75): string {
+  if (!url || !url.includes('pexels.com')) return url;
+  try {
+    const u = new URL(url);
+    u.search = '';
+    u.searchParams.set('w', String(width));
+    u.searchParams.set('q', String(quality));
+    u.searchParams.set('auto', 'compress');
+    u.searchParams.set('cs', 'tinysrgb');
+    u.searchParams.set('fit', 'crop');
+    u.searchParams.set('fm', 'webp');
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 async function getArticles() {
   const db = createClient(
     process.env.SUPABASE_URL!,
@@ -37,13 +56,9 @@ async function getArticles() {
 
   const { data, error } = await db
     .from('articles')
-    // ── Slimmed select: only columns ArticleCard actually uses ──
-    // Removed: raw_content, admin_notes, scheduled_publish_date,
-    //          source_url, is_draft, is_published, created_at,
-    //          updated_at, difficulty — none used by ArticleCard/ArticleGrid
     .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, era')
     .eq('is_published', true)
-    .is('deleted_at', null)          // ── exclude soft-deleted articles
+    .is('deleted_at', null)
     .order('published_date', { ascending: false })
     .limit(100);
 
@@ -61,8 +76,30 @@ export default async function Home() {
   const heroArticle  = articles[0];
   const gridArticles = articles.slice(1);
 
+  // Build the preload URL at render time — same params as HeroSection's pexelsResize
+  const lcpImageUrl = heroArticle?.image_url
+    ? pexelsResize(heroArticle.image_url, 700, 75)
+    : null;
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+
+      {/*
+        LCP PRELOAD: Tells the browser to fetch the hero image immediately —
+        before it even parses the page body or unblocks the CSS chunk.
+        This eliminates the 370ms "resource load delay" in the LCP breakdown.
+        The URL must exactly match what HeroSection renders as the <img> src.
+      */}
+      {lcpImageUrl && (
+        <link
+          rel="preload"
+          as="image"
+          href={lcpImageUrl}
+          // @ts-ignore — fetchPriority is valid on <link> but not in TS types yet
+          fetchPriority="high"
+        />
+      )}
+
       <SiteHeader />
 
       <main className="flex-1">
@@ -89,7 +126,6 @@ export default async function Home() {
               </div>
             </div>
 
-            {/* ArticleGrid handles search + load more */}
             <ArticleGrid articles={gridArticles as any[]} />
           </>
         )}
