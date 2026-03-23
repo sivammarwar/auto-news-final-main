@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/components/Providers';
 import { Analytics } from '@vercel/analytics/next';
-import Script from 'next/script';
 import './globals.css';
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
@@ -58,44 +57,38 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/* AdSense account verification — required by Google, must stay in <head> */}
+        {/* AdSense account verification */}
         <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
+
+        {/*
+          FIX: AdSense loaded as a plain <script> tag — NOT via Next.js <Script>.
+          Next.js <Script> injects data-nscript attribute which:
+            1. AdSense validator rejects → logs warning in console
+            2. Causes React hydration mismatch (error #418) because the
+               attribute is present server-side but AdSense strips it client-side
+          Plain <script async> in <head> is exactly what Google's docs specify.
+          It loads after HTML parse (async) so it doesn't block rendering.
+        */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880"
+          crossOrigin="anonymous"
+        />
 
         <style>{`
           *, *::before, *::after { font-synthesis: none; }
 
-          /*
-            CLS FIX: Pre-reserve space for Auto Ads slots.
-            Without this, Auto Ads injects banners that push content down → CLS.
-            min-height reserves the space before the ad fills in → no shift.
-          */
           ins.adsbygoogle {
             display: block !important;
             min-height: 90px;
           }
 
-          /*
-            Anchor ads are position:fixed so don't cause CLS directly,
-            but they cover bottom content on mobile. Reserve 60px padding.
-          */
           @media (max-width: 768px) {
             body { padding-bottom: 60px; }
           }
         `}</style>
 
-        {/*
-          Logo preload REMOVED — logo is now inlined as a base64 data URL
-          in SiteHeader.tsx. A preload for a data URL is meaningless since
-          there is no network request to initiate. Removing it saves a
-          wasted hint slot in the browser's preload scanner.
-        */}
-
-        {/*
-          Pexels preconnect — hero image origin.
-          crossOrigin removed: images don't use CORS so the attribute was
-          causing the browser to open a second connection for the actual
-          image request, defeating the purpose. Plain preconnect is correct.
-        */}
         <link rel="preconnect" href="https://images.pexels.com" />
       </head>
       <body>
@@ -103,20 +96,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </Providers>
         <Analytics />
-
-        {/*
-          strategy="lazyOnload" — fires only when browser is fully idle.
-          Prevents AdSense from competing with React hydration on mobile,
-          eliminates duplicate adsbygoogle.js load, and lets LCP paint first.
-          Ads still appear automatically once account is approved.
-        */}
-        <Script
-          id="adsense"
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880"
-          crossOrigin="anonymous"
-          strategy="lazyOnload"
-        />
       </body>
     </html>
   );
