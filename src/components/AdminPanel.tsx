@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Upload, Trash2, Zap, RefreshCw, CheckSquare, Square, X, Plus, BookOpen } from 'lucide-react';
 import SchedulerPanel from '@/components/SchedulerPanel';
+import { adminPost, adminGet } from '@/lib/adminApi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Article {
@@ -13,7 +14,7 @@ interface Article {
   title: string;
   summary: string;
   raw_content?: string | null;
-  content_length_chars?: number | null;  // from articles_admin_list view
+  content_length_chars?: number | null;
   category: string;
   subcategory?: string | null;
   source_name: string;
@@ -52,36 +53,6 @@ interface TopicPoolCount {
   subcategory: string;
   unused: number;
   total: number;
-}
-
-// ─── Admin API helper ─────────────────────────────────────────────────────────
-// All DB writes go through this — never directly from the browser with anon key.
-// NEXT_PUBLIC_ADMIN_PASSWORD matches ADMIN_PASSWORD on the server. The real keys (Supabase, Groq, Pexels) never leave the server.
-const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? '';
-
-async function adminPost(action: string, payload: unknown): Promise<{ data?: unknown; error?: { message: string } | null }> {
-  const res = await fetch('/api/admin', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-admin-password': ADMIN_PASSWORD },
-    body: JSON.stringify({ action, payload }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    return { error: { message: `HTTP ${res.status}: ${text}` } };
-  }
-  return res.json();
-}
-
-async function adminGet(params: Record<string, string>): Promise<{ data?: unknown; error?: { message: string } | null }> {
-  const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`/api/admin?${qs}`, {
-    headers: { 'x-admin-password': ADMIN_PASSWORD },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    return { error: { message: `HTTP ${res.status}: ${text}` } };
-  }
-  return res.json();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -202,10 +173,6 @@ const nowTS  = () => new Date().toLocaleTimeString('en-IN', { hour12: false });
 const sleep  = (ms: number) => new Promise(r => setTimeout(r, ms));
 const clamp  = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
-// ─── Groq API ─────────────────────────────────────────────────────────────────
-// NOTE: Groq API keys are now fetched from the server via /api/admin/generate
-// (see the generate route). The functions below call that route instead of
-// calling Groq directly from the browser.
 async function groqRequest(
   key: string,
   messages: { role: string; content: string }[],
@@ -390,7 +357,8 @@ async function fetchAndSaveImages(
   title: string,
   subcategory: string,
   imageQueries: string[],
-  log: (m: string, t: GenLog['type']) => void
+  log: (m: string, t: GenLog['type']) => void,
+  adminPassword: string
 ): Promise<number> {
   const catConfig = HISTORY_CATEGORIES[subcategory];
   const allPhotos: HybridPhoto[] = [];
@@ -430,11 +398,10 @@ async function fetchAndSaveImages(
     wiki_license_url: photo.wikiLicenseUrl ?? null,
   }));
 
-  // ── CHANGED: write via server API route, not anon client ──
-  const { error } = await adminPost('insert_images', imageRows) as { error?: { message: string } | null };
+  const { error } = await adminPost('insert_images', imageRows, adminPassword) as { error?: { message: string } | null };
   if (error) { log(`    ✗ Image save error: ${error.message}`, 'error'); return 0; }
 
-  await adminPost('update_article_image_url', { id: articleId, image_url: imageRows[0].image_url });
+  await adminPost('update_article_image_url', { id: articleId, image_url: imageRows[0].image_url }, adminPassword);
   log(`    ✅ ${toSave.length} images saved`, 'success');
   return toSave.length;
 }
@@ -442,7 +409,7 @@ async function fetchAndSaveImages(
 // ════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════════════════
-export default function AdminPanel() {
+export default function AdminPanel({ adminPassword }: { adminPassword: string }) {
   const [articles, setArticles]               = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [images, setImages]                   = useState<ArticleImage[]>([]);
@@ -486,7 +453,6 @@ export default function AdminPanel() {
   }, []);
 
   // ── TOPIC POOL COUNTS ─────────────────────────────────────────────────────
-  // Still uses anon client — reads are public, this is fine
   const fetchTopicPoolCounts = async () => {
     setTopicDebugMsg('⏳ Fetching topic pool counts...');
     try {
@@ -520,17 +486,12 @@ export default function AdminPanel() {
   };
 
   // ── FETCH ARTICLES ─────────────────────────────────────────────────────────
-  // ── CHANGED: goes through server API route which uses articles_admin_list
-  //    (excludes raw_content) and adds deleted_at IS NULL filter
   const fetchArticles = async () => {
+    if (!adminPassword) { setError('Authentication error: Missing password'); return; }
     setLoading(true);
     try {
-      const params: Record<string, string> = {
-        type: 'articles',
-        filter,
-        filterCat,
-      };
-      const { data, error: e } = await adminGet(params) as { data: Article[]; error: any };
+      const params: Record<string, string> = { type: 'articles', filter, filterCat };
+      const { data, error: e } = await adminGet(params, adminPassword) as { data: Article[]; error: any };
       if (e) throw new Error(e.message);
       setArticles(data ?? []);
     } catch (e: any) { setError(e.message); }
@@ -538,7 +499,6 @@ export default function AdminPanel() {
   };
 
   // ── SAVE TOPICS ────────────────────────────────────────────────────────────
-  // ── CHANGED: goes through server API route
   const handleSaveTopics = async () => {
     const lines = topicInputText.split('\n').map(l => l.trim()).filter(l => l.length > 10);
     if (lines.length === 0) { setTopicSaveMsg('⚠️ No valid topics found. Enter one topic per line.'); return; }
@@ -548,7 +508,7 @@ export default function AdminPanel() {
       topic_key: topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120),
       is_used: false,
     }));
-    const { error: e } = await adminPost('upsert_topics', rows) as { error?: { message: string } | null };
+    const { error: e } = await adminPost('upsert_topics', rows, adminPassword) as { error?: { message: string } | null };
     if (e) {
       setTopicSaveMsg(`❌ Save failed: ${e.message}`);
     } else {
@@ -561,7 +521,6 @@ export default function AdminPanel() {
   };
 
   // ── TOPIC POOL HELPERS ─────────────────────────────────────────────────────
-  // Still uses anon client — reads are public
   const pickTopicsFromDB = async (subcategory: string, count: number): Promise<{ id: number; topic: string }[]> => {
     const { data, error: e } = await supabase
       .from('topic_pool').select('id, topic')
@@ -571,20 +530,20 @@ export default function AdminPanel() {
     return data as { id: number; topic: string }[];
   };
 
-  // ── CHANGED: goes through server API route
   const markTopicUsed = async (id: number): Promise<void> => {
-    await adminPost('mark_topic_used', { id });
+    await adminPost('mark_topic_used', { id }, adminPassword);
   };
 
   // ════════════════════════════════════════════════════════════════════════
   // MAIN HISTORY GENERATION PIPELINE
   // ════════════════════════════════════════════════════════════════════════
   const handleGenerate = async () => {
-    // ── CHANGED: keys fetched from server — never hardcoded in browser
+    if (!adminPassword) { setError('Authentication error: Missing password'); return; }
+
     const keyRes = await fetch('/api/admin/keys', {
-      headers: { 'x-admin-password': ADMIN_PASSWORD },
+      headers: { 'x-admin-password': adminPassword },
     });
-    if (!keyRes.ok) { setError('Could not load API keys — check ADMIN_PASSWORD'); return; }
+    if (!keyRes.ok) { setError('Could not load API keys — check your login session'); return; }
     const { groqKeys, pexelsKey } = await keyRes.json() as { groqKeys: string[]; pexelsKey: string };
 
     if (!groqKeys?.length) { setError('Missing Groq API keys on server'); return; }
@@ -676,7 +635,6 @@ export default function AdminPanel() {
 
           if (stopRef.current) break;
 
-          // ── CHANGED: insert via server API route
           const { data: saved, error: saveErr } = await adminPost('insert_article', {
             title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
             summary: summary.substring(0, 500), raw_content: fullContent,
@@ -685,7 +643,7 @@ export default function AdminPanel() {
             published_date: new Date().toISOString(),
             is_draft: true, is_published: false, image_url: null,
             admin_notes: `Topic: "${topic}" | Subcategory: ${catConfig.label}`,
-          }) as { data: { id: number } | null; error: any };
+          }, adminPassword) as { data: { id: number } | null; error: any };
 
           if (saveErr) {
             log(`    ✗ DB save failed: ${saveErr.message}`, 'error');
@@ -699,15 +657,16 @@ export default function AdminPanel() {
           await markTopicUsed(topicId);
           log(`    🔒 Topic marked as used in pool`, 'info');
 
-          const imageCount = await fetchAndSaveImages(pexelsKey, articleId, title, subcatKey, imgQ, log);
+          const imageCount = await fetchAndSaveImages(pexelsKey, articleId, title, subcatKey, imgQ, log, adminPassword);
 
           const goodScore = score >= AUTO_PUBLISH_SCORE;
           const hasImages = imageCount >= MIN_IMAGES_TO_PUBLISH;
           if (goodScore && hasImages) {
-            // Verify content exists before publishing
-            const { data: verify } = await adminGet({ type: 'article_content', articleId: String(articleId) }) as { data: { raw_content: string; image_url: string } | null };
+            const { data: verify } = await adminGet({ type: 'article_content', articleId: String(articleId) }, adminPassword) as {
+              data: { raw_content: string; image_url: string | null } | null
+            };
             if ((verify?.raw_content?.length ?? 0) > 200 && verify?.image_url) {
-              const { error: pubErr } = await adminPost('publish_article', { id: articleId }) as { error: any };
+              const { error: pubErr } = await adminPost('publish_article', { id: articleId }, adminPassword) as { error: any };
               if (!pubErr) { autoPublished++; log(`    🚀 AUTO-PUBLISHED #${articleId} (${score.toFixed(1)}⭐, ${imageCount} images)`, 'success'); }
             }
           } else {
@@ -728,9 +687,7 @@ export default function AdminPanel() {
       log(`   📋 Left in drafts:   ${grandTotal - autoPublished}`, 'info');
       setSuccess(`✅ Done! ${grandTotal} articles written · ${autoPublished} auto-published · ${grandTotal - autoPublished} in drafts`);
 
-      // Refresh the materialized view after a generation run
-      await adminPost('refresh_category_counts', {});
-
+      await adminPost('refresh_category_counts', {}, adminPassword);
       fetchArticles(); fetchTopicPoolCounts();
 
     } catch (e: any) {
@@ -749,20 +706,17 @@ export default function AdminPanel() {
   };
 
   // ── SELECT ARTICLE ─────────────────────────────────────────────────────────
-  // ── CHANGED: images fetched via server API; raw_content fetched separately
   const selectArticle = async (article: Article) => {
     if (selectMode) return;
     setSelectedArticle(article); setAdminNotes(article.admin_notes ?? '');
     setError(null); setSuccess(null);
     try {
-      // Fetch images via server route
-      const { data: imgData, error: imgErr } = await adminGet({ type: 'images', articleId: String(article.id) }) as { data: ArticleImage[]; error: any };
+      const { data: imgData, error: imgErr } = await adminGet({ type: 'images', articleId: String(article.id) }, adminPassword) as { data: ArticleImage[]; error: any };
       if (imgErr) throw new Error(imgErr.message);
       setImages(imgData ?? []);
 
-      // Fetch raw_content only when article is opened (not included in list)
       if (!article.raw_content) {
-        const { data: contentData } = await adminGet({ type: 'article_content', articleId: String(article.id) }) as { data: { id: number; raw_content: string } | null; error: any };
+        const { data: contentData } = await adminGet({ type: 'article_content', articleId: String(article.id) }, adminPassword) as { data: { id: number; raw_content: string } | null; error: any };
         if (contentData?.raw_content) {
           setSelectedArticle(prev => prev ? { ...prev, raw_content: contentData.raw_content } : prev);
         }
@@ -773,14 +727,13 @@ export default function AdminPanel() {
   const toggleSelect = (id: number) =>
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // ── CHANGED: soft delete via server API route
   const deleteSelected = async () => {
     if (!selectedIds.size) return;
     if (!confirm(`Delete ${selectedIds.size} article(s)? Cannot be undone.`)) return;
     setDeleting(true);
     try {
       const ids = [...selectedIds];
-      const { errors } = await adminPost('delete_articles_bulk', { ids }) as { errors: string[] | null };
+      const { errors } = await adminPost('delete_articles_bulk', { ids }, adminPassword) as { errors: string[] | null };
       if (errors?.length) throw new Error(errors.join(', '));
       if (selectedArticle && selectedIds.has(selectedArticle.id)) { setSelectedArticle(null); setImages([]); }
       setSelectedIds(new Set()); setSelectMode(false);
@@ -795,17 +748,16 @@ export default function AdminPanel() {
     if (!selectedArticle) return;
     setRefetchingImages(true); setError(null);
 
-    // ── CHANGED: pexels key fetched from server
-    const keyRes = await fetch('/api/admin/keys', { headers: { 'x-admin-password': ADMIN_PASSWORD } });
+    const keyRes = await fetch('/api/admin/keys', { headers: { 'x-admin-password': adminPassword } });
     if (!keyRes.ok) { setError('Could not load API keys'); setRefetchingImages(false); return; }
     const { pexelsKey } = await keyRes.json() as { pexelsKey: string };
     if (!pexelsKey) { setError('PEXELS_API_KEY not set on server'); setRefetchingImages(false); return; }
 
     try {
-      await adminPost('delete_images_by_article', { article_id: selectedArticle.id });
-      await adminPost('update_article_image_url', { id: selectedArticle.id, image_url: null });
+      await adminPost('delete_images_by_article', { article_id: selectedArticle.id }, adminPassword);
+      await adminPost('update_article_image_url', { id: selectedArticle.id, image_url: null }, adminPassword);
       const catConfig = HISTORY_CATEGORIES[selectedArticle.subcategory ?? ''];
-      const count = await fetchAndSaveImages(pexelsKey, selectedArticle.id, selectedArticle.title, selectedArticle.subcategory ?? 'famous-figures', catConfig?.imageQueries ?? [], (m) => console.log(m));
+      const count = await fetchAndSaveImages(pexelsKey, selectedArticle.id, selectedArticle.title, selectedArticle.subcategory ?? 'famous-figures', catConfig?.imageQueries ?? [], (m) => console.log(m), adminPassword);
       await selectArticle(selectedArticle);
       if (count > 0) { setSuccess(`✅ ${count} images refetched!`); setTimeout(() => setSuccess(null), 3000); }
       else setError('No images found — try uploading manually.');
@@ -819,7 +771,6 @@ export default function AdminPanel() {
     const file = e.target.files[0];
     setUploading(true); setError(null);
     try {
-      // Storage upload still uses anon client (Supabase Storage is separate from DB RLS)
       const path = `${selectedArticle.id}/${Date.now()}-${file.name}`;
       const { error: upErr } = await supabase.storage.from('article-images').upload(path, file, { upsert: true });
       if (upErr) throw upErr;
@@ -828,12 +779,11 @@ export default function AdminPanel() {
         const img = new Image();
         img.onload = async () => {
           try {
-            // ── CHANGED: insert image via server API route
             const { error: imgErr } = await adminPost('insert_images', [{
               article_id: selectedArticle.id, image_url: publicUrl,
               position: images.length, width: img.width, height: img.height,
               size_kb: Math.round(file.size / 1024), alt_text: 'Article image', image_source: 'upload'
-            }]) as { error: any };
+            }], adminPassword) as { error: any };
             if (imgErr) throw new Error(imgErr.message);
             await selectArticle(selectedArticle);
             setSuccess('✅ Uploaded!'); setTimeout(() => setSuccess(null), 3000); res();
@@ -846,60 +796,85 @@ export default function AdminPanel() {
     finally { setUploading(false); e.target.value = ''; }
   };
 
-  // ── CHANGED: delete image via server API route
   const deleteImage = async (id: number) => {
     if (!confirm('Delete this image?')) return;
     try {
-      const { error: e } = await adminPost('delete_image', { id }) as { error: any };
+      const { error: e } = await adminPost('delete_image', { id }, adminPassword) as { error: any };
       if (e) throw new Error(e.message);
       setImages(p => p.filter(i => i.id !== id));
     } catch (e: any) { setError(e.message); }
   };
 
-  // ── CHANGED: publish via server API route
+  // ── PUBLISH ────────────────────────────────────────────────────────────────
   const publishArticle = async () => {
     if (!selectedArticle) return;
     if (images.length < MIN_IMAGES_TO_PUBLISH) { setError(`Need at least ${MIN_IMAGES_TO_PUBLISH} images.`); return; }
     try {
-      const { error: e } = await adminPost('publish_article', { id: selectedArticle.id }) as { error: any };
+      const { error: e } = await adminPost('publish_article', { id: selectedArticle.id }, adminPassword) as { error: any };
       if (e) throw new Error(e.message);
+      // Update selected article state immediately so UI reflects published status
+      const updated = { ...selectedArticle, is_published: true, is_draft: false };
+      setSelectedArticle(updated);
+      // Update the article in the list too
+      setArticles(prev => prev.map(a => a.id === selectedArticle.id ? updated : a));
       setSuccess('✅ Article is live!');
-      setTimeout(() => { fetchArticles(); setSelectedArticle(null); setImages([]); }, 1500);
+      setTimeout(() => setSuccess(null), 3000);
+      // Refresh the list so counts stay correct
+      await fetchArticles();
     } catch (e: any) { setError(e.message); }
   };
 
-  // ── CHANGED: delete via server API route (soft delete)
+  // ── DELETE ─────────────────────────────────────────────────────────────────
   const deleteArticle = async (article: Article) => {
     if (!confirm(`Delete "${article.title.substring(0, 60)}..."?`)) return;
     try {
-      const { error: e } = await adminPost('delete_article', { id: article.id }) as { error: any };
+      const { error: e } = await adminPost('delete_article', { id: article.id }, adminPassword) as { error: any };
       if (e) throw new Error(e.message);
-      setSuccess('✅ Deleted.'); setSelectedArticle(null); setImages([]);
-      setTimeout(() => setSuccess(null), 3000); fetchArticles();
+      setSuccess('✅ Deleted.');
+      setSelectedArticle(null);
+      setImages([]);
+      setTimeout(() => setSuccess(null), 3000);
+      fetchArticles();
     } catch (e: any) { setError(e.message); }
   };
 
-  // ── CHANGED: unpublish via server API route
+  // ── UNPUBLISH → back to draft ──────────────────────────────────────────────
+  // FIX: Previously cleared selectedArticle which made it look like nothing happened.
+  // Now we keep the article selected, update its state, and switch the filter to draft.
   const unpublishArticle = async (article: Article) => {
-    if (!confirm('Move back to drafts?')) return;
+    if (!confirm('Move this article back to drafts?')) return;
     try {
-      const { error: e } = await adminPost('unpublish_article', { id: article.id }) as { error: any };
+      const { error: e } = await adminPost('unpublish_article', { id: article.id }, adminPassword) as { error: any };
       if (e) throw new Error(e.message);
+
+      // Build updated article object reflecting draft state
+      const updated = { ...article, is_published: false, is_draft: true };
+
+      // Update the selected article in-place so the detail panel refreshes
+      setSelectedArticle(updated);
+
+      // Switch the list filter to 'draft' so the article is visible in the sidebar
+      setFilter('draft');
+
       setSuccess('✅ Moved to drafts.');
-      setTimeout(() => { setSuccess(null); fetchArticles(); setSelectedArticle(null); setImages([]); }, 1500);
+      setTimeout(() => setSuccess(null), 3000);
+
+      // Refresh article list (will now show drafts because filter changed)
+      await fetchArticles();
     } catch (e: any) { setError(e.message); }
   };
 
-  // ── CHANGED: save notes via server API route
+  // ── ADMIN NOTES ────────────────────────────────────────────────────────────
   const updateAdminNotes = async () => {
     if (!selectedArticle) return;
     try {
-      const { error: e } = await adminPost('update_admin_notes', { id: selectedArticle.id, admin_notes: adminNotes }) as { error: any };
+      const { error: e } = await adminPost('update_admin_notes', { id: selectedArticle.id, admin_notes: adminNotes }, adminPassword) as { error: any };
       if (e) throw new Error(e.message);
       setSuccess('✅ Saved!'); setTimeout(() => setSuccess(null), 2000);
     } catch (e: any) { setError(e.message); }
   };
 
+  // ── HELPERS ────────────────────────────────────────────────────────────────
   const scoreColor = (s: number | null) =>
     s === null ? 'text-gray-500 bg-gray-100' :
     s >= 8 ? 'text-green-600 bg-green-50' : s >= 7 ? 'text-yellow-600 bg-yellow-50' : 'text-gray-500 bg-gray-100';
@@ -914,7 +889,6 @@ export default function AdminPanel() {
   };
   const lowTopicCategories = topicPoolCounts.filter(c => c.unused < LOW_TOPIC_WARNING);
 
-  // ── JSX — identical to original, zero UI changes ──────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mb-6">
@@ -1086,6 +1060,7 @@ export default function AdminPanel() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ── ARTICLE LIST ─────────────────────────────────────────── */}
         <div className="lg:col-span-1">
           <Card className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -1149,6 +1124,7 @@ export default function AdminPanel() {
                         {catConf && <span className="text-xs text-amber-700">{catConf.emoji} {catConf.label}</span>}
                         <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${scoreColor(article.score)}`}>⭐ {article.score?.toFixed(1) ?? '—'}</span>
                         {article.is_published && <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Live</span>}
+                        {article.is_draft && !article.is_published && <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">Draft</span>}
                       </div>
                     </div>
                   </div>
@@ -1158,6 +1134,7 @@ export default function AdminPanel() {
           </Card>
         </div>
 
+        {/* ── ARTICLE DETAIL ────────────────────────────────────────── */}
         <div className="lg:col-span-2">
           {!selectedArticle || selectMode ? (
             <Card className="flex flex-col items-center justify-center min-h-[400px] text-gray-400">
@@ -1173,7 +1150,10 @@ export default function AdminPanel() {
                   <h3 className="font-bold text-lg leading-snug flex-1">{selectedArticle.title}</h3>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className={`text-sm font-bold px-2 py-1 rounded ${scoreColor(selectedArticle.score)}`}>⭐ {selectedArticle.score?.toFixed(1)}</span>
-                    {selectedArticle.is_published && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">🟢 Live</span>}
+                    {selectedArticle.is_published
+                      ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">🟢 Live</span>
+                      : <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-semibold">📋 Draft</span>
+                    }
                   </div>
                 </div>
                 {selectedArticle.subcategory && HISTORY_CATEGORIES[selectedArticle.subcategory] && (
@@ -1203,23 +1183,54 @@ export default function AdminPanel() {
                   </div>
                   <div className="bg-gray-50 rounded-lg p-3">
                     <p className="text-gray-400 text-xs mb-1">Status</p>
-                    <p className={`font-bold text-xs ${selectedArticle.is_published ? 'text-green-600' : 'text-orange-500'}`}>
+                    <p className={`font-bold text-xs ${selectedArticle.is_published ? 'text-green-600' : 'text-yellow-600'}`}>
                       {selectedArticle.is_published ? '🟢 Live' : '📋 Draft'}
                     </p>
                   </div>
                 </div>
-                {!selectedArticle.is_published && (
-                  <Button onClick={publishArticle} disabled={images.length < MIN_IMAGES_TO_PUBLISH}
-                    className={`w-full font-bold py-3 text-base text-white ${images.length >= MIN_IMAGES_TO_PUBLISH ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}>
-                    {images.length >= MIN_IMAGES_TO_PUBLISH ? '🚀 Publish Now' : `📸 Need ${MIN_IMAGES_TO_PUBLISH} images`}
-                  </Button>
-                )}
-                {selectedArticle.is_published && (
+
+                {/* ── Action buttons based on status ── */}
+                {!selectedArticle.is_published ? (
+                  // DRAFT STATE: Show publish button + delete
                   <div className="space-y-2">
-                    <div className="w-full py-2.5 text-center text-green-700 font-bold bg-green-50 rounded-lg border border-green-200 text-sm">🟢 Live on your site</div>
+                    <Button
+                      onClick={publishArticle}
+                      disabled={images.length < MIN_IMAGES_TO_PUBLISH}
+                      className={`w-full font-bold py-3 text-base text-white ${
+                        images.length >= MIN_IMAGES_TO_PUBLISH
+                          ? 'bg-green-600 hover:bg-green-700'
+                          : 'bg-gray-300 cursor-not-allowed'
+                      }`}
+                    >
+                      {images.length >= MIN_IMAGES_TO_PUBLISH ? '🚀 Publish Now' : `📸 Need ${MIN_IMAGES_TO_PUBLISH} images to publish`}
+                    </Button>
+                    <Button
+                      onClick={() => deleteArticle(selectedArticle)}
+                      className="w-full text-sm font-semibold bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      <Trash2 size={15} className="mr-1.5" /> Delete Article
+                    </Button>
+                  </div>
+                ) : (
+                  // PUBLISHED STATE: Show "move to draft" + delete
+                  <div className="space-y-2">
+                    <div className="w-full py-2.5 text-center text-green-700 font-bold bg-green-50 rounded-lg border border-green-200 text-sm">
+                      🟢 Live on your site
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <Button onClick={() => unpublishArticle(selectedArticle)} variant="outline" className="text-sm font-semibold border-yellow-400 text-yellow-700">📋 Back to Drafts</Button>
-                      <Button onClick={() => deleteArticle(selectedArticle)} className="text-sm font-semibold bg-red-600 hover:bg-red-700 text-white"><Trash2 size={15} className="mr-1.5" /> Delete</Button>
+                      <Button
+                        onClick={() => unpublishArticle(selectedArticle)}
+                        variant="outline"
+                        className="text-sm font-semibold border-yellow-400 text-yellow-700 hover:bg-yellow-50"
+                      >
+                        📋 Move to Drafts
+                      </Button>
+                      <Button
+                        onClick={() => deleteArticle(selectedArticle)}
+                        className="text-sm font-semibold bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        <Trash2 size={15} className="mr-1.5" /> Delete
+                      </Button>
                     </div>
                   </div>
                 )}

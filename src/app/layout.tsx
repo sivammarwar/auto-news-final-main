@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/components/Providers';
 import { Analytics } from '@vercel/analytics/next';
+import Script from 'next/script';
 import './globals.css';
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
@@ -57,43 +58,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head suppressHydrationWarning>
-        {/* AdSense account verification — do not touch */}
+        {/* AdSense account verification */}
         <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
 
-        {/*
-          PERFORMANCE FIX: AdSense deferred until 2s after page load.
-          Previously loaded immediately via <script async> which still blocked
-          the main thread during the LCP window, causing 640ms element render delay.
-
-          New approach:
-            1. Page loads, LCP image paints (~1s)
-            2. window 'load' fires
-            3. setTimeout waits 2 more seconds
-            4. AdSense script injected — main thread is free during LCP
-
-          The meta verification tag above is kept so AdSense can still
-          verify site ownership without the script being present at parse time.
-
-          Ad slots still render normally — the 2s delay is imperceptible to
-          users since ads are below the fold on mobile anyway.
-        */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.addEventListener('load', function() {
-                setTimeout(function() {
-                  var s = document.createElement('script');
-                  s.async = true;
-                  s.crossOrigin = 'anonymous';
-                  s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880';
-                  document.head.appendChild(s);
-                }, 2000);
-              });
-            `
-          }}
-        />
-
-        <style>{`
+        <style suppressHydrationWarning>{`
           *, *::before, *::after { font-synthesis: none; }
 
           ins.adsbygoogle {
@@ -111,8 +79,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href="https://upload.wikimedia.org" />
         <link rel="dns-prefetch" href="https://supabase.co" />
       </head>
-      <body>
-
+      <body suppressHydrationWarning>
+        {/* Logo - static image, no hydration issues */}
         <div
           data-prerender-logo=""
           aria-hidden="true"
@@ -139,6 +107,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             style={{ height: '4rem', width: 'auto', objectFit: 'contain' }}
           />
         </div>
+
+        {/* AdSense Deferred Script */}
+        <Script
+          id="google-adsense-deferred"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener('load', function() {
+                setTimeout(function() {
+                  var s = document.createElement('script');
+                  s.async = true;
+                  s.crossOrigin = 'anonymous';
+                  s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880';
+                  document.head.appendChild(s);
+                }, 2000);
+              });
+            `
+          }}
+        />
 
         <Providers>
           {children}

@@ -8,8 +8,8 @@ import { Card } from '@/components/ui/card';
 
 export default function AdminLogin() {
   const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -17,21 +17,25 @@ export default function AdminLogin() {
     setError('');
     setLoading(true);
 
+    console.log('🔑 Login: Attempting login');
+
     try {
-      // Password is verified server-side — never sent to client bundle
       const res = await fetch('/api/admin/auth', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ password }),
+        body: JSON.stringify({ password }),
       });
 
       if (res.ok) {
-        // Store a lightweight expiring token in localStorage
-        const token = {
-          value:   'admin-' + Date.now(),
-          expires: Date.now() + 24 * 60 * 60 * 1000,  // 24 hours
-        };
-        localStorage.setItem('admin_token', JSON.stringify(token));
+        const expires = Date.now() + 24 * 60 * 60 * 1000;
+        
+        localStorage.setItem('admin_token', JSON.stringify({ 
+          value: 'admin-' + Date.now(), 
+          expires 
+        }));
+        localStorage.setItem('admin_password', password);
+        
+        console.log('🔑 Login: Success, redirecting');
         router.push('/admin');
       } else {
         setError('Incorrect password. Try again.');
@@ -44,12 +48,13 @@ export default function AdminLogin() {
     }
   };
 
+  // Remove the mounted check - just render directly
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
       <div className="mb-8 text-center">
-        <h1 className="font-bold text-2xl tracking-tightest text-foreground">
-          SIGNAL <span className="font-mono text-[13px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">History</span>
-        </h1>
+      <h1 className="font-bold text-2xl tracking-tightest text-foreground" suppressHydrationWarning>
+        Hidden <span className="font-mono text-[13px] text-muted-foreground tracking-[0.2em] uppercase align-middle ml-1">Facts</span>
+      </h1>
         <p className="text-muted-foreground text-sm mt-1">Admin panel</p>
       </div>
 

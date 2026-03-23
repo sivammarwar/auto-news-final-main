@@ -5,60 +5,72 @@ import { useRouter } from 'next/navigation';
 import AdminPanel from '@/components/AdminPanel';
 
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading]                 = useState(true);
+  const [adminPassword, setAdminPassword] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const raw = localStorage.getItem('admin_token');
-    if (!raw) {
-      router.push('/admin/login');
-      setLoading(false);
-      return;
-    }
-    try {
-      const token = JSON.parse(raw);
-      if (!token.expires || token.expires < Date.now()) {
+    const checkAuth = () => {
+      try {
+        const raw = localStorage.getItem('admin_token');
+        const pw = localStorage.getItem('admin_password');
+
+        if (!raw || !pw) {
+          router.push('/admin/login');
+          setLoading(false);
+          return;
+        }
+
+        const token = JSON.parse(raw);
+        if (!token.expires || token.expires < Date.now()) {
+          localStorage.removeItem('admin_token');
+          localStorage.removeItem('admin_password');
+          router.push('/admin/login');
+          setLoading(false);
+          return;
+        }
+
+        setAdminPassword(pw);
+      } catch (err) {
+        console.error('Auth error:', err);
         localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_password');
         router.push('/admin/login');
+      } finally {
         setLoading(false);
-        return;
       }
-      setIsAuthenticated(true);
-    } catch {
-      localStorage.removeItem('admin_token');
-      router.push('/admin/login');
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    checkAuth();
   }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_password');
     router.push('/admin/login');
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <span className="font-mono text-sm text-gray-400 animate-pulse">Loading...</span>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600 mx-auto mb-4"></div>
+          <span className="font-mono text-sm text-gray-400">Loading...</span>
+        </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) return null;
+  if (!adminPassword) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Admin top bar */}
       <div className="sticky top-0 z-50 bg-gray-900 text-white px-4 sm:px-6 h-11 flex items-center justify-between border-b border-gray-700">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold tracking-tight">
-            📜 Hidden Facts
-          </span>
-          <span className="text-xs text-gray-400 hidden sm:inline">
-            · Admin panel
-          </span>
+          <span className="text-sm font-bold tracking-tight">📜 Hidden Facts</span>
+          <span className="text-xs text-gray-400 hidden sm:inline">· Admin panel</span>
         </div>
         <button
           onClick={handleLogout}
@@ -68,7 +80,7 @@ export default function AdminPage() {
         </button>
       </div>
 
-      <AdminPanel />
+      <AdminPanel adminPassword={adminPassword} />
     </div>
   );
 }

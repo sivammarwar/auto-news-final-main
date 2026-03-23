@@ -1425,3 +1425,61 @@ UNION ALL SELECT
   'check_is_admin function',
   EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'check_is_admin')
 ORDER BY check_item;
+
+-- First, check if the view exists and what columns it has
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'articles_admin_list' 
+  AND table_schema = 'public'
+ORDER BY ordinal_position;
+
+-- Now, let's fix the view by dropping and recreating it with the correct columns
+-- Drop the existing view
+DROP VIEW IF EXISTS public.articles_admin_list;
+
+-- Recreate it with all the columns including deleted_at
+CREATE VIEW public.articles_admin_list AS
+SELECT
+  id, 
+  created_at, 
+  updated_at, 
+  title, 
+  source_url, 
+  source_name,
+  summary,
+  category, 
+  subcategory, 
+  score, 
+  image_url, 
+  published_date,
+  is_published, 
+  is_draft, 
+  admin_notes, 
+  scheduled_publish_date,
+  era, 
+  difficulty, 
+  slug,
+  deleted_at,  -- Add the deleted_at column
+  length(coalesce(raw_content, '')) AS content_length_chars
+FROM public.articles
+WHERE deleted_at IS NULL;
+
+-- Grant permissions (if needed)
+GRANT SELECT ON public.articles_admin_list TO anon, authenticated, service_role;
+
+-- Verify the view now has the deleted_at column
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'articles_admin_list' 
+  AND table_schema = 'public'
+ORDER BY ordinal_position;
+
+-- Fix any articles stuck with both flags = true
+UPDATE public.articles
+SET is_draft = false
+WHERE is_published = true AND is_draft = true AND deleted_at IS NULL;
+
+-- Verify: should return 0 rows after the fix
+SELECT id, title, is_published, is_draft 
+FROM public.articles 
+WHERE is_published = true AND is_draft = true AND deleted_at IS NULL;
