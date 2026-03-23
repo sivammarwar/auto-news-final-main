@@ -31,16 +31,21 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
   'historys-unsung-heroes': { label: "History's Unsung Heroes",  emoji: '⭐' },
 };
 
-function pexelsResize(url: string, width = 400, quality = 75): string {
+// ── FIX: Added fm=webp — Pexels serves WebP natively via this param.
+// PageSpeed flagged 3 card images serving JPEG totalling 32KB of wasted bytes.
+// WebP at q=75 is ~30-40% smaller with no visible quality difference.
+// Also reduced quality from 75→70 for card thumbnails — acceptable at 400px.
+function pexelsResize(url: string, width = 400, quality = 70): string {
   if (!url || !url.includes('pexels.com')) return url;
   try {
     const u = new URL(url);
     u.search = '';
     u.searchParams.set('w', String(width));
     u.searchParams.set('q', String(quality));
-    u.searchParams.set('auto', 'format');
+    u.searchParams.set('auto', 'compress');
     u.searchParams.set('cs', 'tinysrgb');
     u.searchParams.set('fit', 'crop');
+    u.searchParams.set('fm', 'webp');      // ── CHANGED: force WebP format
     return u.toString();
   } catch {
     return url;
@@ -81,16 +86,6 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
     : article.category;
 
   return (
-    /*
-      FIX: Replaced outer <Link> with <div> + onClick.
-      A <Link> renders as <a>, and the category <Link> inside is also an <a>.
-      Nested <a> tags are invalid HTML — React throws a hydration error and
-      browsers handle them inconsistently.
-
-      Solution: outer card is a <div> that navigates on click via router.push().
-      The category link remains a real <Link> (<a>) for correct semantics.
-      Keyboard users can still Tab to the inner category link and the title link.
-    */
     <div
       role="article"
       aria-label={`Read article: ${article.title}`}
@@ -114,7 +109,7 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
       {article.image_url && (
         <div className="aspect-video overflow-hidden mb-4 rounded-lg bg-muted">
           <img
-            src={pexelsResize(article.image_url, 400, 75)}
+            src={pexelsResize(article.image_url, 400, 70)}
             alt={article.title}
             width={400}
             height={225}
@@ -126,10 +121,6 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
       )}
 
       <div className="mb-3 flex items-center justify-between gap-2">
-        {/*
-          Category link is a real <a> — valid now that outer wrapper is a <div>.
-          stopPropagation prevents the card onClick from also firing.
-        */}
         <Link
           href={categoryPath}
           aria-label={`Category: ${subcatMeta?.label ?? article.category} — view all articles`}
@@ -146,11 +137,6 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
         </span>
       </div>
 
-      {/*
-        Title as a real link for keyboard/screen reader users.
-        Mouse users click the whole card div; keyboard users Tab to this.
-        stopPropagation not needed — both navigate to the same place.
-      */}
       <Link
         href={articleHref}
         onClick={e => e.stopPropagation()}

@@ -57,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/* AdSense account verification */}
+        {/* AdSense account verification — do not touch */}
         <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
 
         {/*
@@ -89,7 +89,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }
         `}</style>
 
-        <link rel="preconnect" href="https://images.pexels.com" />
+        {/* ── PERFORMANCE: Resource hints ─────────────────────────────────
+            preconnect on Pexels saves ~100-150ms before LCP image loads.
+            dns-prefetch on Wikimedia/Supabase is the cheaper version —
+            just resolves DNS without opening a TCP connection.
+            All hrefs are static strings — no dynamic env vars to avoid
+            hydration mismatches (React error #418).
+        ──────────────────────────────────────────────────────────────── */}
+        <link rel="preconnect"   href="https://images.pexels.com" />
+        <link rel="dns-prefetch" href="https://images.pexels.com" />
+        <link rel="dns-prefetch" href="https://upload.wikimedia.org" />
+        <link rel="dns-prefetch" href="https://supabase.co" />
       </head>
       <body>
         <Providers>
