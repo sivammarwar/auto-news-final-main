@@ -84,7 +84,7 @@ export default function ArticleGrid({ articles }: Props) {
           searchOpen ? 'max-h-24 opacity-100 mb-6 sm:mb-8' : 'max-h-0 opacity-0 mb-0'
         }`}
         // @ts-ignore — inert is valid HTML but not yet in React TS types
-        inert={!searchOpen ? '' : undefined}
+        inert={!searchOpen ? true : undefined}
       >
         <div className="relative w-full">
           <svg
