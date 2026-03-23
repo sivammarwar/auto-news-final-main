@@ -68,33 +68,27 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // ── FIX 1: Target modern browsers to eliminate legacy polyfills ──────────
-  // PageSpeed flagged 14KB of unnecessary polyfills:
-  // Array.prototype.at/flat/flatMap, Object.fromEntries/hasOwn,
-  // String.prototype.trimStart/trimEnd — all natively supported since 2021.
-  // Targeting Chrome 90+ / Safari 15+ drops these entirely.
-  // Vercel's edge CDN serves the right bundle to right browser automatically.
   experimental: {
     serverActions: {
       allowedOrigins: ['hiddenhistoryfacts.com', 'www.hiddenhistoryfacts.com'],
     },
+    // ── FIX: Eliminate render-blocking CSS (saves 140-170ms on FCP/LCP) ──
+    // Critters inlines the critical CSS needed for above-the-fold content
+    // directly into the HTML, then loads the rest asynchronously.
+    // Run: npm i critters
+    optimizeCss: true,
   },
 
-  // ── FIX 2: Remove stale image domains ────────────────────────────────────
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.pexels.com' },
       { protocol: 'https', hostname: '**.wikimedia.org' },
       { protocol: 'https', hostname: '**.wikipedia.org' },
     ],
-    // ── FIX 3: Prefer WebP/AVIF for Next.js <Image> components ──────────
     formats: ['image/avif', 'image/webp'],
-    // Minimum cache TTL for optimised images (1 week)
     minimumCacheTTL: 604800,
   },
 
-  // ── FIX 4: Compiler options — remove console.log in production ──────────
-  // Reduces JS bundle size slightly and prevents log spam
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production'
       ? { exclude: ['error', 'warn'] }
@@ -107,9 +101,6 @@ const nextConfig: NextConfig = {
         source:  '/(.*)',
         headers: securityHeaders,
       },
-      // ── FIX 5: Long-lived cache for static assets ────────────────────
-      // Next.js hashes chunk filenames — safe to cache forever.
-      // Cuts repeat-visit load time significantly.
       {
         source: '/_next/static/(.*)',
         headers: [
