@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useId } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { SiteLogo } from './SiteLogo';
 
 const CATEGORIES = [
   { label: 'Ancient Civilizations',   emoji: '🏛️', path: '/category/ancient-civilizations' },
@@ -24,18 +25,6 @@ const CATEGORIES = [
   { label: 'Beyond Human Limits',      emoji: '🚀', path: '/category/beyond-human-limits' },
   { label: "History's Unsung Heroes",  emoji: '⭐', path: '/category/historys-unsung-heroes' },
 ];
-
-/*
-  LCP FIX: Logo inlined as base64 data URL.
-  At 1KB the logo is tiny — base64 adds ~33% overhead making it ~1.4KB in the
-  JS bundle, which is negligible. The benefit is zero network requests:
-    - Eliminates 340ms resource load delay (was blocked by render-blocking CSS)
-    - Eliminates 620ms resource load duration (downloading on slow 4G)
-  Only the element render delay remains (AdSense JS on main thread — not fixable).
-  Also remove <link rel="preload" href="/logo.webp"> from layout.tsx.
-*/
-const LOGO_DATA_URL =
-  'data:image/webp;base64,UklGRigEAABXRUJQVlA4IBwEAACQHwCdASqEAJEAP5XA1mS4rzgpJ9RrSxAyiWMA17mder+fAfRrPn9nue+yuV8El5NH4YyVnovBj++FmVjms29Ijyf2b9XBWQNKgEA+rDovKIZ+rPAie1uKUzIpx6iY49zl3t6ARL01lpq44oafQmBHOfxO9eCsyWOaj1Vz6FYU+vyugwE1G1k2QgLAuV1xLQUaB/V7GNmrEyL/nn97Zo6kAReM9xeUIOJYKcZJOiKuzewNpbLnQlIp+b25AV3xZ032nLi7mUIIcFKCVL1coyo6Q/+6L3CEXvjOp9Ue2deG08JzEgz1owqRz1gqJEua7tqzRm6f/qivq0XF6nt85OTWFLk40oAA/u4gg5+1zHuaFAJ+gQ0LKG31CpGOxofnxG6/PLSmuHMDmpzOHVm7yuUEWV08HGCr9pmFDaMbTaku3jCd3qFp5OVvakHxqRFfG7vyQ5LWfgPNG3FMLNbylcyTfFtCc4CrYY+klGEjHOB9RH3GnTFqIlQuctsPmaA5tSD/HAe229yHfMmvDz1FIm1iPNnTU/6ye3d5CSOdE+Xpx5hkVwdh/hUSJ1JJ3leMqpj5qgFOHp5egYiUeeYLoUnUQKf18SaKIq8a6HiSBpTsWUP8k/ifsQUlgn1Ni7pnrLDzjY9B9JQ6J5ULz+ARPXO7pUkX7SxnH4u3tJ+1asDh1oqb4wy3z9v9lE3wyu4BBRMHHnLUG/73X+gejkO+S9uCtEXurbKqCcNDmYXszKzfgix7j0nkjUix0Fr4ezjQWwy6qgYk4C/QHn6slOyJ1Vi0Eom3cYIipe+6C+BOAOT2i4+n1Et0+mXmDiKAw1SNnZD55rrdH7JHhcw9VABMqvL7W4M+bFy/6evLtxqOUryBHPNW+nw55cKawBppx2nDQEgI0/eyO5dyugnbFmUW+uTq3vrm2l0aZnqan9GvCmaH75oF2SWcYuKgP8ZJnSqAS7TS9nHb6CRqjdYYOBa3+88FIOaNQqueDUG/EHV9oOY54n4WAgLXH3i7MQgvToCf6fqEd0/gm9GhaelVM/zcW4uOuRWBpoqYeuiCdESr8INoTd5guh6Cc0Sgcn2mWydG3MsSPep3HJZCR+Pfkm1n/+EqvlXz3cswc5BuWjtYfmsB5nQFeQgF8eoXpfHDsnRqRUZCKkG+zMPxIO4My6+XNA+HsByd5jiztEqknNNDLBsuMzF3Cq0LxVkpJigJpKKhZ+/FOIz0D7J6vD+f3mAnF3kxH5SVaBRIZF6fpuSgSNOu0oXtS/L19yJJwxkj+qxDjENK9gjVSniTm9jJ3CRlGiKe6LfyQEMy9SDr35wZ63QW+ksJBhS2Jj7MYvQGKMsg5EIlr1URD7wpnyQvSzywDVJWioxycJkQD4FuQ/zzd1D27f1ATLX8fAAAAAAAAA==';
 
 const SiteHeader = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -77,41 +66,8 @@ const SiteHeader = () => {
       <header className="sticky top-0 z-50 bg-background shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
         <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-16 sm:h-16 flex items-center justify-between gap-4">
 
-          {/* Logo — inlined as data URL, zero network request */}
-          <Link
-            href="/"
-            aria-label="Hidden Facts — home"
-            className="shrink-0 flex items-center gap-3 text-black"
-          >
-            <img
-              src={LOGO_DATA_URL}
-              alt="Hidden Facts logo"
-              width={132}
-              height={145}
-              className="h-16 w-auto object-contain"
-              /*
-                fetchPriority="high" signals to the browser that this is the
-                most important image on the page — helps it become the LCP
-                element even though it's rendered via JS (client component).
-                elementtiming lets the browser attribute it in performance marks.
-              */
-              fetchPriority="high"
-              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-              // @ts-ignore — elementtiming is a valid perf attribute, not in TS types yet
-              elementtiming="logo"
-            />
-            <div className="flex flex-col leading-tight">
-              <span className="font-bold text-xl tracking-tight text-foreground">
-                Hidden Facts
-              </span>
-              <span
-                className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground"
-                aria-hidden="true"
-              >
-                The History Books Left This Out
-              </span>
-            </div>
-          </Link>
+          {/* ← Logo is now a server component — renders in initial HTML */}
+          <SiteLogo />
 
           {/* Desktop nav */}
           <nav aria-label="Main navigation" className="hidden md:flex items-center gap-8">
@@ -191,7 +147,7 @@ const SiteHeader = () => {
             </div>
           </nav>
 
-          {/* Mobile hamburger — min 44×44 px tap target */}
+          {/* Mobile hamburger */}
           <button
             className="md:hidden flex flex-col justify-center items-center gap-[5px] w-11 h-11 -mr-1 rounded-md hover:bg-muted transition-colors"
             onClick={() => setMobileOpen(v => !v)}
