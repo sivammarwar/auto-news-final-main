@@ -1,174 +1,195 @@
 'use client';
 
-import { Article } from '@/types/article';
-import { formatDistanceToNow } from 'date-fns';
-import Link from 'next/link';
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+// src/components/ArticleGrid.tsx
+// Client component that handles:
+//   1. Search bar (filters articles by title/summary client-side)
+//   2. "Load more" pagination — reveals 12 articles at a time
+// The parent (page.tsx) fetches all articles server-side and passes them here.
 
-interface ArticleCardProps {
-  article: Article;
-  index?: number;
+import { useState, useMemo, useRef, useEffect } from 'react';
+import ArticleCard from '@/components/ArticleCard';
+
+const PAGE_SIZE = 12;
+
+interface Article {
+  id: number;
+  slug: string;
+  title: string;
+  summary?: string;
+  category?: string;
+  subcategory?: string;
+  image_url?: string;
+  published_date: string;
+  source_name?: string;
+  score?: number;
+  [key: string]: any;
 }
 
-const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
-  'ancient-civilizations':  { label: 'Ancient Civilizations',   emoji: '🏛️' },
-  'medieval-feudal':        { label: 'Medieval & Feudal',        emoji: '⚔️'  },
-  'age-of-exploration':     { label: 'Age of Exploration',       emoji: '🧭' },
-  'revolutions-politics':   { label: 'Revolutions & Politics',   emoji: '✊'  },
-  'world-wars-conflicts':   { label: 'World Wars & Conflicts',   emoji: '🎖️' },
-  'colonial-imperial':      { label: 'Colonial & Imperial',      emoji: '🌐' },
-  'human-rights-movements': { label: 'Human Rights Movements',   emoji: '🕊️' },
-  'science-technology':     { label: 'Science & Technology',     emoji: '🔬' },
-  'religion-philosophy':    { label: 'Religion & Philosophy',    emoji: '📿' },
-  'cultural-social':        { label: 'Cultural & Social',        emoji: '🎭' },
-  'economic-trade':         { label: 'Economic & Trade',         emoji: '🏺' },
-  'military-warfare':       { label: 'Military & Warfare',       emoji: '🗡️' },
-  'regional-history':       { label: 'Regional History',         emoji: '🗺️' },
-  'archaeology-mysteries':  { label: 'Archaeology & Mysteries',  emoji: '🔍' },
-  'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
-  'beyond-human-limits':    { label: 'Beyond Human Limits',      emoji: '🚀' },
-  'historys-unsung-heroes': { label: "History's Unsung Heroes",  emoji: '⭐' },
-};
-
-// ── FIX: Added fm=webp — Pexels serves WebP natively via this param.
-// PageSpeed flagged 3 card images serving JPEG totalling 32KB of wasted bytes.
-// WebP at q=75 is ~30-40% smaller with no visible quality difference.
-// Also reduced quality from 75→70 for card thumbnails — acceptable at 400px.
-function pexelsResize(url: string, width = 400, quality = 70): string {
-  if (!url || !url.includes('pexels.com')) return url;
-  try {
-    const u = new URL(url);
-    u.search = '';
-    u.searchParams.set('w', String(width));
-    u.searchParams.set('q', String(quality));
-    u.searchParams.set('auto', 'compress');
-    u.searchParams.set('cs', 'tinysrgb');
-    u.searchParams.set('fit', 'crop');
-    u.searchParams.set('fm', 'webp');      // ── CHANGED: force WebP format
-    return u.toString();
-  } catch {
-    return url;
-  }
+interface Props {
+  articles: Article[];
 }
 
-const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
-  const router  = useRouter();
-  const [active, setActive] = useState(false);
-  const mounted = useRef(false);
-  const [shouldAnimate, setShouldAnimate] = useState(false);
+export default function ArticleGrid({ articles }: Props) {
+  const [query, setQuery]               = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [searchOpen, setSearchOpen]     = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const [timeAgo, setTimeAgo] = useState<string>(() => {
-    const d = new Date(article.published_date);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  });
-
+  // Reset pagination whenever search query changes
   useEffect(() => {
-    setTimeAgo(formatDistanceToNow(new Date(article.published_date), { addSuffix: true }));
-  }, [article.published_date]);
+    setVisibleCount(PAGE_SIZE);
+  }, [query]);
 
+  // Focus input when search bar opens
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      if (window.performance?.navigation?.type !== 2) {
-        setShouldAnimate(true);
-      }
-    }
-  }, []);
+    if (searchOpen) inputRef.current?.focus();
+  }, [searchOpen]);
 
-  const articleHref  = `/article/${article.slug ?? article.id}`;
-  const subcatMeta   = article.subcategory ? SUBCATEGORY_META[article.subcategory] : null;
-  const categoryPath = article.subcategory
-    ? `/category/${article.subcategory}`
-    : `/category/${article.category}`;
-  const categoryLabel = subcatMeta
-    ? `${subcatMeta.emoji} ${subcatMeta.label}`
-    : article.category;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return articles;
+    return articles.filter(
+      a =>
+        a.title.toLowerCase().includes(q) ||
+        (a.summary ?? '').toLowerCase().includes(q) ||
+        (a.subcategory ?? '').toLowerCase().includes(q)
+    );
+  }, [query, articles]);
+
+  const visible   = filtered.slice(0, visibleCount);
+  const hasMore   = visibleCount < filtered.length;
+  const remaining = filtered.length - visibleCount;
 
   return (
-    <div
-      role="article"
-      aria-label={`Read article: ${article.title}`}
-      onMouseEnter={() => router.prefetch(articleHref)}
-      onMouseDown={() => setActive(true)}
-      onMouseLeave={() => setActive(false)}
-      onClick={() => router.push(articleHref)}
-      onKeyDown={e => { if (e.key === 'Enter') router.push(articleHref); }}
-      tabIndex={0}
-      className={`
-        group relative flex flex-col p-4 sm:p-6 cursor-pointer
-        shadow-card hover:shadow-card-hover
-        z-0 hover:z-10
-        bg-background hover:bg-muted/40
-        transition-colors duration-150
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
-        ${shouldAnimate ? 'card-fadein' : 'opacity-100'}
-      `}
-      style={shouldAnimate ? { animationDelay: `${index * 50}ms` } : undefined}
-    >
-      {article.image_url && (
-        <div className="aspect-video overflow-hidden mb-4 rounded-lg bg-muted">
-          <img
-            src={pexelsResize(article.image_url, 400, 70)}
-            alt={article.title}
-            width={400}
-            height={225}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            loading={index === 0 ? 'eager' : 'lazy'}
-            fetchPriority={index === 0 ? 'high' : 'auto'}
-            decoding={index === 0 ? 'sync' : 'async'}
+    <section className="max-w-screen-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
+
+      {/* ── Header row: label + search toggle button ── */}
+      <div className="flex items-center justify-between mb-4 sm:mb-6 gap-4">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          Latest history
+          {query && (
+            <span className="ml-2 text-primary">
+              — {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </span>
+
+        <button
+          onClick={() => {
+            setSearchOpen(v => !v);
+            if (searchOpen) setQuery('');
+          }}
+          aria-label={searchOpen ? 'Close search' : 'Search articles'}
+          className={`flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em] px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap ${
+            searchOpen
+              ? 'border-primary text-primary bg-primary/5'
+              : 'border-border text-muted-foreground hover:border-primary hover:text-primary hover:bg-muted'
+          }`}
+        >
+          <svg
+            className="w-3.5 h-3.5 shrink-0"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+          {searchOpen ? 'Close' : 'Search'}
+        </button>
+      </div>
+
+      {/* ── Full-width search bar — own row, slides in below header ──
+          ACCESSIBILITY FIX: replaced aria-hidden with inert.
+          aria-hidden hides from screen readers but leaves the input focusable,
+          which Lighthouse flags as a violation. inert removes the element from
+          both the accessibility tree AND tab order when search is closed.
+      ── */}
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          searchOpen ? 'max-h-24 opacity-100 mb-6 sm:mb-8' : 'max-h-0 opacity-0 mb-0'
+        }`}
+        // @ts-ignore — inert is valid HTML but not yet in React TS types
+        inert={!searchOpen ? '' : undefined}
+      >
+        <div className="relative w-full">
+          <svg
+            className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search articles by title, topic, or category…"
+            className="w-full pl-11 pr-10 py-3.5 bg-muted border border-border rounded-xl font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors"
           />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              aria-label="Clear search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── No results ── */}
+      {filtered.length === 0 && (
+        <div className="py-20 text-center">
+          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            No articles found for &ldquo;{query}&rdquo;
+          </p>
+          <button
+            onClick={() => setQuery('')}
+            className="mt-4 font-mono text-[10px] uppercase tracking-[0.15em] text-primary hover:underline"
+          >
+            Clear search
+          </button>
         </div>
       )}
 
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <Link
-          href={categoryPath}
-          aria-label={`Category: ${subcatMeta?.label ?? article.category} — view all articles`}
-          onClick={e => e.stopPropagation()}
-          className="font-mono text-[10px] uppercase tracking-[0.15em] text-primary font-bold hover:underline min-h-[44px] inline-flex items-center"
-        >
-          {categoryLabel}
-        </Link>
-        <span
-          className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground shrink-0"
-          aria-label={`Published ${timeAgo}`}
-        >
-          {timeAgo}
-        </span>
-      </div>
+      {/* ── Article grid ── */}
+      {visible.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0">
+          {visible.map((article, i) => (
+            <ArticleCard key={article.id} article={article as any} index={i} />
+          ))}
+        </div>
+      )}
 
-      <Link
-        href={articleHref}
-        onClick={e => e.stopPropagation()}
-        tabIndex={-1}
-        className="focus:outline-none"
-        aria-hidden="true"
-      >
-        <h2
-          className="text-base sm:text-lg font-bold leading-snug tracking-tightest mb-3 transition-colors duration-100 hover:text-primary"
-          style={{ color: active ? '#3b82f6' : undefined }}
-        >
-          {article.title}
-        </h2>
-      </Link>
+      {/* ── Load More button ── */}
+      {hasMore && (
+        <div className="flex flex-col items-center gap-3 mt-12">
+          <button
+            onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+            className="group flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-primary border border-border hover:border-primary px-8 py-3.5 rounded-full transition-colors hover:bg-muted"
+          >
+            <svg
+              className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-y-0.5"
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+            Load more articles
+          </button>
 
-      <p className="text-sm leading-relaxed text-muted-foreground line-clamp-3 mb-5 flex-1">
-        {article.summary}
-      </p>
-
-      <div className="mt-auto pt-4 border-t border-border flex items-center justify-between gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-          {article.source_name}
-        </span>
-        {(article as any).era && (
-          <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-foreground bg-muted px-2 py-0.5 rounded-full">
-            {(article as any).era}
+          {/* ACCESSIBILITY FIX: was text-muted-foreground/60 — contrast too low.
+              Bumped to /80 which passes WCAG AA at this font size. */}
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground/80">
+            {remaining} more article{remaining !== 1 ? 's' : ''} remaining
           </span>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+    </section>
   );
-};
-
-export default ArticleCard;
+}
