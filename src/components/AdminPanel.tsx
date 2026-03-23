@@ -13,6 +13,7 @@ interface Article {
   title: string;
   summary: string;
   raw_content?: string | null;
+  content_length_chars?: number | null;  // from articles_admin_list view
   category: string;
   subcategory?: string | null;
   source_name: string;
@@ -53,8 +54,35 @@ interface TopicPoolCount {
   total: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any;
+// ─── Admin API helper ─────────────────────────────────────────────────────────
+// All DB writes go through this — never directly from the browser with anon key.
+// NEXT_PUBLIC_ADMIN_PASSWORD matches ADMIN_PASSWORD on the server. The real keys (Supabase, Groq, Pexels) never leave the server.
+const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? '';
+
+async function adminPost(action: string, payload: unknown): Promise<{ data?: unknown; error?: { message: string } | null }> {
+  const res = await fetch('/api/admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-admin-password': ADMIN_PASSWORD },
+    body: JSON.stringify({ action, payload }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    return { error: { message: `HTTP ${res.status}: ${text}` } };
+  }
+  return res.json();
+}
+
+async function adminGet(params: Record<string, string>): Promise<{ data?: unknown; error?: { message: string } | null }> {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`/api/admin?${qs}`, {
+    headers: { 'x-admin-password': ADMIN_PASSWORD },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    return { error: { message: `HTTP ${res.status}: ${text}` } };
+  }
+  return res.json();
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // AUTHOR PERSONA
@@ -145,7 +173,6 @@ const HISTORY_CATEGORIES: Record<string, {
     label: 'Famous Figures & Leaders', emoji: '👑', era: 'all',
     imageQueries: ['historical portrait leader ancient','historical figure sculpture monument','famous leader historical portrait museum','ancient ruler emperor historical artwork','historical biography portrait painting','leader monument memorial historical','ancient king queen historical sculpture','famous historical figure bust museum'],
   },
-  // ── NEW CATEGORIES ──────────────────────────────────────────────────────────
   'beyond-human-limits': {
     label: 'Beyond Human Limits', emoji: '🚀', era: 'all',
     imageQueries: ['human achievement breakthrough historical','impossible engineering feat construction','moon landing space achievement NASA','first flight aviation Wright brothers','engineering marvel historical monument','scientific breakthrough discovery moment','human endurance survival extreme historical','record breaking achievement triumph historical'],
@@ -176,6 +203,9 @@ const sleep  = (ms: number) => new Promise(r => setTimeout(r, ms));
 const clamp  = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 // ─── Groq API ─────────────────────────────────────────────────────────────────
+// NOTE: Groq API keys are now fetched from the server via /api/admin/generate
+// (see the generate route). The functions below call that route instead of
+// calling Groq directly from the browser.
 async function groqRequest(
   key: string,
   messages: { role: string; content: string }[],
@@ -354,7 +384,14 @@ async function fetchWikimedia(searchTerm: string, count = 2): Promise<HybridPhot
   return photos;
 }
 
-async function fetchAndSaveImages(pexelsKey: string, articleId: number, title: string, subcategory: string, imageQueries: string[], log: (m: string, t: GenLog['type']) => void): Promise<number> {
+async function fetchAndSaveImages(
+  pexelsKey: string,
+  articleId: number,
+  title: string,
+  subcategory: string,
+  imageQueries: string[],
+  log: (m: string, t: GenLog['type']) => void
+): Promise<number> {
   const catConfig = HISTORY_CATEGORIES[subcategory];
   const allPhotos: HybridPhoto[] = [];
   const seen = new Set<string>();
@@ -392,9 +429,12 @@ async function fetchAndSaveImages(pexelsKey: string, articleId: number, title: s
     wiki_license: photo.wikiLicense ?? null,
     wiki_license_url: photo.wikiLicenseUrl ?? null,
   }));
-  const { error } = await supabase.from('article_images').insert(imageRows);
+
+  // ── CHANGED: write via server API route, not anon client ──
+  const { error } = await adminPost('insert_images', imageRows) as { error?: { message: string } | null };
   if (error) { log(`    ✗ Image save error: ${error.message}`, 'error'); return 0; }
-  await supabase.from('articles').update({ image_url: imageRows[0].image_url }).eq('id', articleId);
+
+  await adminPost('update_article_image_url', { id: articleId, image_url: imageRows[0].image_url });
   log(`    ✅ ${toSave.length} images saved`, 'success');
   return toSave.length;
 }
@@ -446,41 +486,26 @@ export default function AdminPanel() {
   }, []);
 
   // ── TOPIC POOL COUNTS ─────────────────────────────────────────────────────
+  // Still uses anon client — reads are public, this is fine
   const fetchTopicPoolCounts = async () => {
-    console.log('[topic_pool] Starting paginated fetch...');
     setTopicDebugMsg('⏳ Fetching topic pool counts...');
-
     try {
       const allData: { subcategory: string; is_used: boolean }[] = [];
       const pageSize = 1000;
       let from = 0;
       let hasMore = true;
-
       while (hasMore) {
-        const { data, error: e } = await db
+        const { data, error: e } = await supabase
           .from('topic_pool')
           .select('subcategory, is_used')
           .range(from, from + pageSize - 1);
-
-        if (e) {
-          const msg = `❌ topic_pool fetch error: ${e.message}`;
-          console.error('[topic_pool]', msg);
-          setTopicDebugMsg(msg);
-          return;
-        }
-
+        if (e) { setTopicDebugMsg(`❌ topic_pool fetch error: ${e.message}`); return; }
         if (!data || data.length === 0) break;
-
         allData.push(...data);
-        console.log(`[topic_pool] Fetched ${allData.length} rows so far...`);
-
         hasMore = data.length === pageSize;
         from += pageSize;
       }
-
-      console.log(`[topic_pool] Total rows fetched: ${allData.length}`);
       setTopicDebugMsg(`✅ Loaded ${allData.length} topic rows successfully`);
-
       const counts: Record<string, { unused: number; total: number }> = {};
       for (const row of allData) {
         if (!counts[row.subcategory]) counts[row.subcategory] = { unused: 0, total: 0 };
@@ -489,28 +514,31 @@ export default function AdminPanel() {
       }
       setTopicPoolCounts(Object.entries(counts).map(([subcategory, v]) => ({ subcategory, ...v })));
       setTimeout(() => setTopicDebugMsg(null), 5000);
-
     } catch (err: any) {
-      const msg = `❌ Unexpected error: ${err?.message ?? String(err)}`;
-      console.error('[topic_pool] catch:', err);
-      setTopicDebugMsg(msg);
+      setTopicDebugMsg(`❌ Unexpected error: ${err?.message ?? String(err)}`);
     }
   };
 
+  // ── FETCH ARTICLES ─────────────────────────────────────────────────────────
+  // ── CHANGED: goes through server API route which uses articles_admin_list
+  //    (excludes raw_content) and adds deleted_at IS NULL filter
   const fetchArticles = async () => {
     setLoading(true);
     try {
-      let q = supabase.from('articles').select('*').order('created_at', { ascending: false });
-      if (filter === 'draft')     q = q.eq('is_draft', true);
-      if (filter === 'published') q = q.eq('is_published', true);
-      if (filterCat !== 'all')    q = q.eq('subcategory', filterCat);
-      const { data, error: e } = await q.limit(200);
-      if (e) throw e;
+      const params: Record<string, string> = {
+        type: 'articles',
+        filter,
+        filterCat,
+      };
+      const { data, error: e } = await adminGet(params) as { data: Article[]; error: any };
+      if (e) throw new Error(e.message);
       setArticles(data ?? []);
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
   };
 
+  // ── SAVE TOPICS ────────────────────────────────────────────────────────────
+  // ── CHANGED: goes through server API route
   const handleSaveTopics = async () => {
     const lines = topicInputText.split('\n').map(l => l.trim()).filter(l => l.length > 10);
     if (lines.length === 0) { setTopicSaveMsg('⚠️ No valid topics found. Enter one topic per line.'); return; }
@@ -520,9 +548,7 @@ export default function AdminPanel() {
       topic_key: topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120),
       is_used: false,
     }));
-    console.log('[topic_pool] Saving rows:', rows);
-    const { error: e } = await db.from('topic_pool').upsert(rows, { onConflict: 'subcategory,topic_key', ignoreDuplicates: true });
-    console.log('[topic_pool] Save result error:', e);
+    const { error: e } = await adminPost('upsert_topics', rows) as { error?: { message: string } | null };
     if (e) {
       setTopicSaveMsg(`❌ Save failed: ${e.message}`);
     } else {
@@ -534,8 +560,10 @@ export default function AdminPanel() {
     setTimeout(() => setTopicSaveMsg(null), 4000);
   };
 
+  // ── TOPIC POOL HELPERS ─────────────────────────────────────────────────────
+  // Still uses anon client — reads are public
   const pickTopicsFromDB = async (subcategory: string, count: number): Promise<{ id: number; topic: string }[]> => {
-    const { data, error: e } = await db
+    const { data, error: e } = await supabase
       .from('topic_pool').select('id, topic')
       .eq('subcategory', subcategory).eq('is_used', false)
       .order('created_at', { ascending: true }).limit(count);
@@ -543,22 +571,24 @@ export default function AdminPanel() {
     return data as { id: number; topic: string }[];
   };
 
+  // ── CHANGED: goes through server API route
   const markTopicUsed = async (id: number): Promise<void> => {
-    await db.from('topic_pool').update({ is_used: true }).eq('id', id);
+    await adminPost('mark_topic_used', { id });
   };
 
   // ════════════════════════════════════════════════════════════════════════
   // MAIN HISTORY GENERATION PIPELINE
   // ════════════════════════════════════════════════════════════════════════
   const handleGenerate = async () => {
-    const groqKeys: string[] = [
-      process.env.NEXT_PUBLIC_GROQ_API_KEY,
-      process.env.NEXT_PUBLIC_GROQ_API_KEY_2,
-      process.env.NEXT_PUBLIC_GROQ_API_KEY_3,
-    ].filter(Boolean) as string[];
-    const pexelsKey = process.env.NEXT_PUBLIC_PEXELS_API_KEY as string | undefined;
-    if (groqKeys.length === 0) { setError('Missing NEXT_PUBLIC_GROQ_API_KEY'); return; }
-    if (!pexelsKey)            { setError('Missing NEXT_PUBLIC_PEXELS_API_KEY'); return; }
+    // ── CHANGED: keys fetched from server — never hardcoded in browser
+    const keyRes = await fetch('/api/admin/keys', {
+      headers: { 'x-admin-password': ADMIN_PASSWORD },
+    });
+    if (!keyRes.ok) { setError('Could not load API keys — check ADMIN_PASSWORD'); return; }
+    const { groqKeys, pexelsKey } = await keyRes.json() as { groqKeys: string[]; pexelsKey: string };
+
+    if (!groqKeys?.length) { setError('Missing Groq API keys on server'); return; }
+    if (!pexelsKey)         { setError('Missing Pexels API key on server'); return; }
 
     setGenerating(true); setError(null); setSuccess(null);
     setGenLogs([]); setGenDone(0); setBatchInfo('');
@@ -586,7 +616,7 @@ export default function AdminPanel() {
 
         const pickedTopics = await pickTopicsFromDB(subcatKey, ARTICLES_PER_CATEGORY);
         if (pickedTopics.length === 0) {
-          log(`  ⚠️  No unused topics in pool for ${catConfig.label} — skipping. Add topics in the Topic Pool section.`, 'warn');
+          log(`  ⚠️  No unused topics in pool for ${catConfig.label} — skipping.`, 'warn');
           setGenDone(d => d + ARTICLES_PER_CATEGORY); globalIdx += ARTICLES_PER_CATEGORY; continue;
         }
         log(`  📋 Picked ${pickedTopics.length} topic(s) from pool`, 'info');
@@ -646,7 +676,8 @@ export default function AdminPanel() {
 
           if (stopRef.current) break;
 
-          const { data: saved, error: saveErr } = await supabase.from('articles').insert({
+          // ── CHANGED: insert via server API route
+          const { data: saved, error: saveErr } = await adminPost('insert_article', {
             title: title.substring(0, 255), source_url: null, source_name: AUTHOR.name,
             summary: summary.substring(0, 500), raw_content: fullContent,
             category: 'history', subcategory: subcatKey, score,
@@ -654,7 +685,7 @@ export default function AdminPanel() {
             published_date: new Date().toISOString(),
             is_draft: true, is_published: false, image_url: null,
             admin_notes: `Topic: "${topic}" | Subcategory: ${catConfig.label}`,
-          }).select('id').single();
+          }) as { data: { id: number } | null; error: any };
 
           if (saveErr) {
             log(`    ✗ DB save failed: ${saveErr.message}`, 'error');
@@ -662,7 +693,7 @@ export default function AdminPanel() {
           }
 
           grandTotal++;
-          const articleId = (saved as any).id;
+          const articleId = saved!.id;
           log(`    ✅ Article #${articleId} saved | score ${score.toFixed(1)}`, 'success');
 
           await markTopicUsed(topicId);
@@ -673,11 +704,10 @@ export default function AdminPanel() {
           const goodScore = score >= AUTO_PUBLISH_SCORE;
           const hasImages = imageCount >= MIN_IMAGES_TO_PUBLISH;
           if (goodScore && hasImages) {
-            const { data: verify } = await supabase.from('articles').select('raw_content, image_url').eq('id', articleId).single();
-            if ((verify as any)?.raw_content?.length > 200 && (verify as any)?.image_url) {
-              const { error: pubErr } = await supabase.from('articles')
-                .update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() })
-                .eq('id', articleId);
+            // Verify content exists before publishing
+            const { data: verify } = await adminGet({ type: 'article_content', articleId: String(articleId) }) as { data: { raw_content: string; image_url: string } | null };
+            if ((verify?.raw_content?.length ?? 0) > 200 && verify?.image_url) {
+              const { error: pubErr } = await adminPost('publish_article', { id: articleId }) as { error: any };
               if (!pubErr) { autoPublished++; log(`    🚀 AUTO-PUBLISHED #${articleId} (${score.toFixed(1)}⭐, ${imageCount} images)`, 'success'); }
             }
           } else {
@@ -697,6 +727,10 @@ export default function AdminPanel() {
       log(`   🚀 Auto-published:   ${autoPublished}`, 'success');
       log(`   📋 Left in drafts:   ${grandTotal - autoPublished}`, 'info');
       setSuccess(`✅ Done! ${grandTotal} articles written · ${autoPublished} auto-published · ${grandTotal - autoPublished} in drafts`);
+
+      // Refresh the materialized view after a generation run
+      await adminPost('refresh_category_counts', {});
+
       fetchArticles(); fetchTopicPoolCounts();
 
     } catch (e: any) {
@@ -714,29 +748,40 @@ export default function AdminPanel() {
     addLog('⛔ Pipeline stopped.', 'error');
   };
 
+  // ── SELECT ARTICLE ─────────────────────────────────────────────────────────
+  // ── CHANGED: images fetched via server API; raw_content fetched separately
   const selectArticle = async (article: Article) => {
     if (selectMode) return;
     setSelectedArticle(article); setAdminNotes(article.admin_notes ?? '');
     setError(null); setSuccess(null);
     try {
-      const { data, error: e } = await supabase.from('article_images').select('*').eq('article_id', article.id).order('position');
-      if (e) throw e;
-      setImages(data ?? []);
+      // Fetch images via server route
+      const { data: imgData, error: imgErr } = await adminGet({ type: 'images', articleId: String(article.id) }) as { data: ArticleImage[]; error: any };
+      if (imgErr) throw new Error(imgErr.message);
+      setImages(imgData ?? []);
+
+      // Fetch raw_content only when article is opened (not included in list)
+      if (!article.raw_content) {
+        const { data: contentData } = await adminGet({ type: 'article_content', articleId: String(article.id) }) as { data: { id: number; raw_content: string } | null; error: any };
+        if (contentData?.raw_content) {
+          setSelectedArticle(prev => prev ? { ...prev, raw_content: contentData.raw_content } : prev);
+        }
+      }
     } catch (e: any) { setError(e.message); }
   };
 
   const toggleSelect = (id: number) =>
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // ── CHANGED: soft delete via server API route
   const deleteSelected = async () => {
     if (!selectedIds.size) return;
     if (!confirm(`Delete ${selectedIds.size} article(s)? Cannot be undone.`)) return;
     setDeleting(true);
     try {
       const ids = [...selectedIds];
-      await supabase.from('article_images').delete().in('article_id', ids);
-      const { error: e } = await supabase.from('articles').delete().in('id', ids);
-      if (e) throw e;
+      const { errors } = await adminPost('delete_articles_bulk', { ids }) as { errors: string[] | null };
+      if (errors?.length) throw new Error(errors.join(', '));
       if (selectedArticle && selectedIds.has(selectedArticle.id)) { setSelectedArticle(null); setImages([]); }
       setSelectedIds(new Set()); setSelectMode(false);
       setSuccess(`✅ Deleted ${ids.length} article(s).`);
@@ -745,14 +790,20 @@ export default function AdminPanel() {
     finally { setDeleting(false); }
   };
 
+  // ── RE-FETCH IMAGES ────────────────────────────────────────────────────────
   const handleRefetchImages = async () => {
     if (!selectedArticle) return;
     setRefetchingImages(true); setError(null);
-    const pexelsKey = process.env.NEXT_PUBLIC_PEXELS_API_KEY as string | undefined;
-    if (!pexelsKey) { setError('NEXT_PUBLIC_PEXELS_API_KEY not set'); setRefetchingImages(false); return; }
+
+    // ── CHANGED: pexels key fetched from server
+    const keyRes = await fetch('/api/admin/keys', { headers: { 'x-admin-password': ADMIN_PASSWORD } });
+    if (!keyRes.ok) { setError('Could not load API keys'); setRefetchingImages(false); return; }
+    const { pexelsKey } = await keyRes.json() as { pexelsKey: string };
+    if (!pexelsKey) { setError('PEXELS_API_KEY not set on server'); setRefetchingImages(false); return; }
+
     try {
-      await supabase.from('article_images').delete().eq('article_id', selectedArticle.id);
-      await supabase.from('articles').update({ image_url: null }).eq('id', selectedArticle.id);
+      await adminPost('delete_images_by_article', { article_id: selectedArticle.id });
+      await adminPost('update_article_image_url', { id: selectedArticle.id, image_url: null });
       const catConfig = HISTORY_CATEGORIES[selectedArticle.subcategory ?? ''];
       const count = await fetchAndSaveImages(pexelsKey, selectedArticle.id, selectedArticle.title, selectedArticle.subcategory ?? 'famous-figures', catConfig?.imageQueries ?? [], (m) => console.log(m));
       await selectArticle(selectedArticle);
@@ -762,11 +813,13 @@ export default function AdminPanel() {
     finally { setRefetchingImages(false); }
   };
 
+  // ── IMAGE UPLOAD ───────────────────────────────────────────────────────────
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedArticle || !e.target.files?.length) return;
     const file = e.target.files[0];
     setUploading(true); setError(null);
     try {
+      // Storage upload still uses anon client (Supabase Storage is separate from DB RLS)
       const path = `${selectedArticle.id}/${Date.now()}-${file.name}`;
       const { error: upErr } = await supabase.storage.from('article-images').upload(path, file, { upsert: true });
       if (upErr) throw upErr;
@@ -775,7 +828,13 @@ export default function AdminPanel() {
         const img = new Image();
         img.onload = async () => {
           try {
-            await supabase.from('article_images').insert({ article_id: selectedArticle.id, image_url: publicUrl, position: images.length, width: img.width, height: img.height, size_kb: Math.round(file.size / 1024), alt_text: 'Article image', image_source: 'upload' });
+            // ── CHANGED: insert image via server API route
+            const { error: imgErr } = await adminPost('insert_images', [{
+              article_id: selectedArticle.id, image_url: publicUrl,
+              position: images.length, width: img.width, height: img.height,
+              size_kb: Math.round(file.size / 1024), alt_text: 'Article image', image_source: 'upload'
+            }]) as { error: any };
+            if (imgErr) throw new Error(imgErr.message);
             await selectArticle(selectedArticle);
             setSuccess('✅ Uploaded!'); setTimeout(() => setSuccess(null), 3000); res();
           } catch (err) { rej(err); }
@@ -787,47 +846,56 @@ export default function AdminPanel() {
     finally { setUploading(false); e.target.value = ''; }
   };
 
+  // ── CHANGED: delete image via server API route
   const deleteImage = async (id: number) => {
     if (!confirm('Delete this image?')) return;
     try {
-      await supabase.from('article_images').delete().eq('id', id);
+      const { error: e } = await adminPost('delete_image', { id }) as { error: any };
+      if (e) throw new Error(e.message);
       setImages(p => p.filter(i => i.id !== id));
     } catch (e: any) { setError(e.message); }
   };
 
+  // ── CHANGED: publish via server API route
   const publishArticle = async () => {
     if (!selectedArticle) return;
     if (images.length < MIN_IMAGES_TO_PUBLISH) { setError(`Need at least ${MIN_IMAGES_TO_PUBLISH} images.`); return; }
     try {
-      await supabase.from('articles').update({ is_published: true, is_draft: false, updated_at: new Date().toISOString() }).eq('id', selectedArticle.id);
+      const { error: e } = await adminPost('publish_article', { id: selectedArticle.id }) as { error: any };
+      if (e) throw new Error(e.message);
       setSuccess('✅ Article is live!');
       setTimeout(() => { fetchArticles(); setSelectedArticle(null); setImages([]); }, 1500);
     } catch (e: any) { setError(e.message); }
   };
 
+  // ── CHANGED: delete via server API route (soft delete)
   const deleteArticle = async (article: Article) => {
     if (!confirm(`Delete "${article.title.substring(0, 60)}..."?`)) return;
     try {
-      await supabase.from('article_images').delete().eq('article_id', article.id);
-      await supabase.from('articles').delete().eq('id', article.id);
+      const { error: e } = await adminPost('delete_article', { id: article.id }) as { error: any };
+      if (e) throw new Error(e.message);
       setSuccess('✅ Deleted.'); setSelectedArticle(null); setImages([]);
       setTimeout(() => setSuccess(null), 3000); fetchArticles();
     } catch (e: any) { setError(e.message); }
   };
 
+  // ── CHANGED: unpublish via server API route
   const unpublishArticle = async (article: Article) => {
     if (!confirm('Move back to drafts?')) return;
     try {
-      await supabase.from('articles').update({ is_published: false, is_draft: true, updated_at: new Date().toISOString() }).eq('id', article.id);
+      const { error: e } = await adminPost('unpublish_article', { id: article.id }) as { error: any };
+      if (e) throw new Error(e.message);
       setSuccess('✅ Moved to drafts.');
       setTimeout(() => { setSuccess(null); fetchArticles(); setSelectedArticle(null); setImages([]); }, 1500);
     } catch (e: any) { setError(e.message); }
   };
 
+  // ── CHANGED: save notes via server API route
   const updateAdminNotes = async () => {
     if (!selectedArticle) return;
     try {
-      await supabase.from('articles').update({ admin_notes: adminNotes }).eq('id', selectedArticle.id);
+      const { error: e } = await adminPost('update_admin_notes', { id: selectedArticle.id, admin_notes: adminNotes }) as { error: any };
+      if (e) throw new Error(e.message);
       setSuccess('✅ Saved!'); setTimeout(() => setSuccess(null), 2000);
     } catch (e: any) { setError(e.message); }
   };
@@ -846,6 +914,7 @@ export default function AdminPanel() {
   };
   const lowTopicCategories = topicPoolCounts.filter(c => c.unused < LOW_TOPIC_WARNING);
 
+  // ── JSX — identical to original, zero UI changes ──────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mb-6">
@@ -857,7 +926,6 @@ export default function AdminPanel() {
 
       <SchedulerPanel />
 
-      {/* ── DEBUG BANNER ── */}
       {topicDebugMsg && (
         <div className={`mb-4 p-3 rounded-lg border text-sm font-mono flex items-center justify-between gap-3 ${
           topicDebugMsg.startsWith('✅') ? 'bg-green-50 border-green-300 text-green-800' :
@@ -885,7 +953,6 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ── TOPIC POOL MANAGER ── */}
       <Card className="mb-6 overflow-hidden border-2 border-blue-200">
         <div className="p-4 bg-blue-50 flex items-center justify-between cursor-pointer" onClick={() => setShowTopicPool(s => !s)}>
           <div className="flex items-center gap-2">
@@ -894,11 +961,7 @@ export default function AdminPanel() {
             <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full font-medium">
               {topicPoolCounts.reduce((s, c) => s + c.unused, 0)} unused topics across all categories
             </span>
-            <button
-              onClick={e => { e.stopPropagation(); fetchTopicPoolCounts(); }}
-              className="ml-1 text-blue-500 hover:text-blue-700"
-              title="Refresh topic counts"
-            >
+            <button onClick={e => { e.stopPropagation(); fetchTopicPoolCounts(); }} className="ml-1 text-blue-500 hover:text-blue-700" title="Refresh topic counts">
               <RefreshCw size={13} />
             </button>
           </div>
@@ -929,13 +992,11 @@ export default function AdminPanel() {
                 );
               })}
             </div>
-
             <div className="bg-white border border-blue-200 rounded-xl p-4">
               <div className="flex items-center gap-3 mb-3">
                 <div className="flex-1">
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Adding topics to:</label>
-                  <select value={topicInputCat} onChange={e => setTopicInputCat(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                  <select value={topicInputCat} onChange={e => setTopicInputCat(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     {Object.entries(HISTORY_CATEGORIES).map(([key, cat]) => (
                       <option key={key} value={key}>{cat.emoji} {cat.label}</option>
                     ))}
@@ -947,26 +1008,20 @@ export default function AdminPanel() {
                 placeholder={`Example:\nthe engineering genius behind the Egyptian pyramids that modern architects still cannot replicate\nthe real reason Rome fell — not barbarians, but something far more internal and surprising`}
                 className="min-h-[160px] text-sm font-mono mb-3 border-gray-300" />
               <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-400">
-                  {topicInputText.split('\n').filter(l => l.trim().length > 10).length} valid topics detected
-                </p>
-                <Button onClick={handleSaveTopics} disabled={savingTopics || topicInputText.trim().length === 0}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6">
+                <p className="text-xs text-gray-400">{topicInputText.split('\n').filter(l => l.trim().length > 10).length} valid topics detected</p>
+                <Button onClick={handleSaveTopics} disabled={savingTopics || topicInputText.trim().length === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6">
                   <Plus size={16} className="mr-1.5" />
                   {savingTopics ? 'Saving...' : 'Save Topics to Pool'}
                 </Button>
               </div>
               {topicSaveMsg && (
-                <p className={`mt-2 text-sm font-medium ${topicSaveMsg.startsWith('✅') ? 'text-green-600' : 'text-orange-600'}`}>
-                  {topicSaveMsg}
-                </p>
+                <p className={`mt-2 text-sm font-medium ${topicSaveMsg.startsWith('✅') ? 'text-green-600' : 'text-orange-600'}`}>{topicSaveMsg}</p>
               )}
             </div>
           </div>
         )}
       </Card>
 
-      {/* ── GENERATE PANEL ── */}
       <Card className="mb-6 overflow-hidden border-2 border-amber-200">
         <div className="p-5 bg-amber-50">
           <div className="flex flex-col md:flex-row md:items-start gap-4">
@@ -1031,7 +1086,6 @@ export default function AdminPanel() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ── ARTICLE LIST ── */}
         <div className="lg:col-span-1">
           <Card className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -1054,8 +1108,7 @@ export default function AdminPanel() {
                 </button>
               ))}
             </div>
-            <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-              className="w-full mb-3 text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700">
+            <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="w-full mb-3 text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700">
               <option value="all">All categories</option>
               {Object.entries(HISTORY_CATEGORIES).map(([key, c]) => (
                 <option key={key} value={key}>{c.emoji} {c.label}</option>
@@ -1105,7 +1158,6 @@ export default function AdminPanel() {
           </Card>
         </div>
 
-        {/* ── ARTICLE DETAIL ── */}
         <div className="lg:col-span-2">
           {!selectedArticle || selectMode ? (
             <Card className="flex flex-col items-center justify-center min-h-[400px] text-gray-400">

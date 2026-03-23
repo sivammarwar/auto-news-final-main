@@ -37,7 +37,6 @@ const SUBCATEGORY_LABELS: Record<string, { label: string; emoji: string }> = {
   'regional-history':       { label: 'Regional History',         emoji: '🗺️' },
   'archaeology-mysteries':  { label: 'Archaeology & Mysteries',  emoji: '🔍' },
   'famous-figures':         { label: 'Famous Figures & Leaders', emoji: '👑' },
-  // ── NEW ──
   'beyond-human-limits':    { label: 'Beyond Human Limits',      emoji: '🚀' },
   'historys-unsung-heroes': { label: "History's Unsung Heroes",  emoji: '⭐' },
 };
@@ -45,11 +44,13 @@ const SUBCATEGORY_LABELS: Record<string, { label: string; emoji: string }> = {
 async function fetchArticle(slug: string) {
   const db = getSupabase();
 
+  // ── CHANGED: added .is('deleted_at', null) to both fetch paths ──
   const { data: bySlug } = await db
     .from('articles')
     .select('*')
     .eq('slug', slug)
     .eq('is_published', true)
+    .is('deleted_at', null)
     .single();
 
   if (bySlug) return { db, article: bySlug };
@@ -62,6 +63,7 @@ async function fetchArticle(slug: string) {
     .select('*')
     .eq('id', id)
     .eq('is_published', true)
+    .is('deleted_at', null)
     .single();
 
   return { db, article: byId ?? null };
@@ -128,10 +130,12 @@ export default async function ArticlePage({
     .eq('article_id', article.id)
     .order('position', { ascending: true });
 
+  // ── CHANGED: added .is('deleted_at', null) to related articles query ──
   const { data: related } = await db
     .from('articles')
     .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
     .eq('is_published', true)
+    .is('deleted_at', null)
     .eq('subcategory', article.subcategory ?? 'history')
     .neq('id', article.id)
     .order('score', { ascending: false })
@@ -147,21 +151,6 @@ export default async function ArticlePage({
 
   return (
     <>
-      {/*
-        FIX: Moved hero image preload into generateMetadata via Next.js headers,
-        OR use next/headers to set Link header. Returning <link> directly in JSX
-        from a server component causes React hydration mismatch (#418) because
-        Next.js hoists it to <head> on server but React doesn't expect it in the
-        component tree during client hydration.
-
-        Correct approach: declare it in the <head> via the metadata API.
-        For dynamic preloads not supported by metadata API, use next/headers.
-        
-        The hero image preload is now handled by fetchPriority="high" on the
-        img tag itself — which is equivalent for LCP purposes and doesn't
-        require a separate <link> tag.
-      */}
-
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -173,7 +162,6 @@ export default async function ArticlePage({
           <article>
             <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-6">
 
-              {/* Breadcrumb */}
               <nav aria-label="Breadcrumb">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-5">
                   <Link
@@ -190,23 +178,12 @@ export default async function ArticlePage({
                     {categoryLabel}
                   </Link>
                   <span className="text-muted-foreground text-xs hidden sm:inline" aria-hidden="true">·</span>
-                  {/*
-                    FIX: pubDate is rendered by server using date-fns format() which
-                    is deterministic — same output on server and client. Safe to render
-                    directly. No useState guard needed here unlike formatDistanceToNow.
-                  */}
                   <time
                     dateTime={article.published_date}
                     className="font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground"
                   >
                     {pubDate}
                   </time>
-                  {/*
-                    FIX: Era badge contrast — was text-[9px] text-muted-foreground bg-muted.
-                    Same failure as ArticleCard: 9px text on muted bg = ~2.5:1 contrast ratio,
-                    fails WCAG AA (requires 4.5:1 for small text).
-                    Fixed: text-[11px] text-foreground for full contrast at any size.
-                  */}
                   {article.era && article.era !== 'all' && (
                     <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-foreground bg-muted px-2 py-0.5 rounded-full">
                       {article.era}
@@ -215,7 +192,6 @@ export default async function ArticlePage({
                 </div>
               </nav>
 
-              {/* Title */}
               <h1
                 className="font-bold tracking-tightest leading-[0.95] text-foreground mb-6"
                 style={{ fontSize: 'clamp(1.75rem, 5.5vw, 3.5rem)', textWrap: 'balance' } as React.CSSProperties}
@@ -223,7 +199,6 @@ export default async function ArticlePage({
                 {article.title}
               </h1>
 
-              {/* Summary */}
               {article.summary && article.summary !== article.raw_content && (
                 <p
                   className="text-muted-foreground leading-relaxed mb-6 border-l-4 border-primary pl-4 italic"
@@ -234,7 +209,6 @@ export default async function ArticlePage({
               )}
             </div>
 
-            {/* Hero image — fetchPriority="high" replaces the <link rel="preload"> */}
             {heroSrc && (
               <div className="w-full mb-8">
                 <div className="max-w-3xl mx-auto sm:px-6">
@@ -254,7 +228,6 @@ export default async function ArticlePage({
               </div>
             )}
 
-            {/* Article body */}
             <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-12">
               <ArticleBody
                 content={article.raw_content || article.summary || ''}
@@ -270,7 +243,6 @@ export default async function ArticlePage({
             </div>
           </article>
 
-          {/* Related articles */}
           {related && related.length > 0 && (
             <section className="max-w-screen-xl mx-auto px-4 sm:px-6 pb-16" aria-label="Related articles">
               <div className="border-t border-border pt-10 mb-6">

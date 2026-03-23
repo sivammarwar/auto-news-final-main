@@ -4,29 +4,29 @@ import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import HeroSection from '@/components/HeroSection';
 import EmptyState from '@/components/EmptyState';
-import ArticleGrid from '@/components/ArticleGrid';  // NEW
+import ArticleGrid from '@/components/ArticleGrid';
 import Link from 'next/link';
 
 export const revalidate = 1800;
 
 const QUICK_LINKS = [
-  { label: '🏛️ Ancient',          path: '/category/ancient-civilizations' },
-  { label: '⚔️ Medieval',          path: '/category/medieval-feudal' },
-  { label: '🧭 Exploration',       path: '/category/age-of-exploration' },
-  { label: '✊ Revolutions',       path: '/category/revolutions-politics' },
-  { label: '🎖️ World Wars',       path: '/category/world-wars-conflicts' },
-  { label: '🌐 Colonial',          path: '/category/colonial-imperial' },
-  { label: '🕊️ Human Rights',     path: '/category/human-rights-movements' },
-  { label: '🔬 Science',           path: '/category/science-technology' },
-  { label: '📿 Religion',          path: '/category/religion-philosophy' },
-  { label: '🎭 Culture',           path: '/category/cultural-social' },
-  { label: '🏺 Trade',             path: '/category/economic-trade' },
-  { label: '🗡️ Military',          path: '/category/military-warfare' },
-  { label: '🗺️ Regional',          path: '/category/regional-history' },
-  { label: '🔍 Archaeology',       path: '/category/archaeology-mysteries' },
-  { label: '👑 Famous Figures',    path: '/category/famous-figures' },
-  { label: '🚀 Beyond Limits',     path: '/category/beyond-human-limits' },
-  { label: '⭐ Unsung Heroes',     path: '/category/historys-unsung-heroes' },
+  { label: '🏛️ Ancient',       path: '/category/ancient-civilizations' },
+  { label: '⚔️ Medieval',       path: '/category/medieval-feudal' },
+  { label: '🧭 Exploration',    path: '/category/age-of-exploration' },
+  { label: '✊ Revolutions',    path: '/category/revolutions-politics' },
+  { label: '🎖️ World Wars',    path: '/category/world-wars-conflicts' },
+  { label: '🌐 Colonial',       path: '/category/colonial-imperial' },
+  { label: '🕊️ Human Rights',  path: '/category/human-rights-movements' },
+  { label: '🔬 Science',        path: '/category/science-technology' },
+  { label: '📿 Religion',       path: '/category/religion-philosophy' },
+  { label: '🎭 Culture',        path: '/category/cultural-social' },
+  { label: '🏺 Trade',          path: '/category/economic-trade' },
+  { label: '🗡️ Military',       path: '/category/military-warfare' },
+  { label: '🗺️ Regional',       path: '/category/regional-history' },
+  { label: '🔍 Archaeology',    path: '/category/archaeology-mysteries' },
+  { label: '👑 Famous Figures', path: '/category/famous-figures' },
+  { label: '🚀 Beyond Limits',  path: '/category/beyond-human-limits' },
+  { label: '⭐ Unsung Heroes',  path: '/category/historys-unsung-heroes' },
 ];
 
 async function getArticles() {
@@ -37,10 +37,15 @@ async function getArticles() {
 
   const { data, error } = await db
     .from('articles')
-    .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
+    // ── Slimmed select: only columns ArticleCard actually uses ──
+    // Removed: raw_content, admin_notes, scheduled_publish_date,
+    //          source_url, is_draft, is_published, created_at,
+    //          updated_at, difficulty — none used by ArticleCard/ArticleGrid
+    .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, era')
     .eq('is_published', true)
+    .is('deleted_at', null)          // ── exclude soft-deleted articles
     .order('published_date', { ascending: false })
-    .limit(100); // fetch up to 100; ArticleGrid handles pagination
+    .limit(100);
 
   if (error) {
     console.error('Failed to fetch articles:', error);
@@ -65,7 +70,7 @@ export default async function Home() {
           <EmptyState />
         ) : (
           <>
-            <HeroSection article={heroArticle} />
+            <HeroSection article={heroArticle as any} />
 
             {/* Category quick-nav */}
             <div className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-14 sm:top-16 z-30">

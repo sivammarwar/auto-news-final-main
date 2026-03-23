@@ -9,7 +9,7 @@ import EmptyState from '@/components/EmptyState';
 import { buildCategoryMetadata } from '@/lib/category-seo';
 import { Article } from '@/types/article';
 
-export const revalidate = 3600; // 1 hour — must be a static number, not an imported constant
+export const revalidate = 3600;
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -22,7 +22,6 @@ const SUBCATEGORY_SLUGS = new Set([
   'human-rights-movements', 'science-technology', 'religion-philosophy',
   'cultural-social', 'economic-trade', 'military-warfare',
   'regional-history', 'archaeology-mysteries', 'famous-figures',
-  // ── NEW ──
   'beyond-human-limits', 'historys-unsung-heroes',
 ]);
 
@@ -43,7 +42,6 @@ const CATEGORY_META: Record<string, { name: string; emoji: string; description: 
   'regional-history':       { name: 'Regional History',          emoji: '🗺️', description: 'Asia, Africa, the Americas, Europe — the world beyond the Western narrative.' },
   'archaeology-mysteries':  { name: 'Archaeology & Mysteries',   emoji: '🔍', description: 'Lost cities, buried artifacts, unsolved ruins — history still being uncovered.' },
   'famous-figures':         { name: 'Famous Figures & Leaders',  emoji: '👑', description: 'Rulers, scientists, reformers — the real people behind the legends.' },
-  // ── NEW ──
   'beyond-human-limits':    { name: 'Beyond Human Limits',       emoji: '🚀', description: 'The moon landing, the first flight, the engineering feats that defied all logic — moments when humanity did the impossible.' },
   'historys-unsung-heroes': { name: "History's Unsung Heroes",   emoji: '⭐', description: 'The nurses, the codebreakers, the ordinary people who changed history without ever getting a statue.' },
 };
@@ -69,10 +67,13 @@ export default async function CategoryPage({
 }) {
   const { slug } = await params;
 
+  // ── CHANGED: added .is('deleted_at', null) to prevent soft-deleted
+  //    articles from appearing on public category pages ──
   let query = supabase
     .from('articles')
     .select('id, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
     .eq('is_published', true)
+    .is('deleted_at', null)
     .order('published_date', { ascending: false })
     .limit(50);
 

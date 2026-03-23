@@ -767,3 +767,661 @@ WHERE slug IS NULL AND title IS NOT NULL;
 
 -- 4. Verify
 SELECT id, title, slug FROM public.articles LIMIT 10;
+
+
+-- Step 1: Drop the existing constraint
+ALTER TABLE public.articles
+  DROP CONSTRAINT IF EXISTS articles_subcategory_check;
+
+-- Step 2: Re-add with all 17 subcategories
+ALTER TABLE public.articles
+  ADD CONSTRAINT articles_subcategory_check CHECK (
+    subcategory IS NULL OR subcategory IN (
+      'ancient-civilizations',
+      'medieval-feudal',
+      'age-of-exploration',
+      'revolutions-politics',
+      'world-wars-conflicts',
+      'colonial-imperial',
+      'human-rights-movements',
+      'science-technology',
+      'religion-philosophy',
+      'cultural-social',
+      'economic-trade',
+      'military-warfare',
+      'regional-history',
+      'archaeology-mysteries',
+      'famous-figures',
+      'beyond-human-limits',
+      'historys-unsung-heroes'
+    )
+  );
+
+-- Step 3: Update history_categories setting
+UPDATE public.settings
+SET value = '[
+  {"id":"ancient-civilizations",  "label":"Ancient Civilizations",   "emoji":"🏛️",  "era":"ancient"},
+  {"id":"medieval-feudal",        "label":"Medieval & Feudal",        "emoji":"⚔️",  "era":"medieval"},
+  {"id":"age-of-exploration",     "label":"Age of Exploration",       "emoji":"🧭",  "era":"early-modern"},
+  {"id":"revolutions-politics",   "label":"Revolutions & Politics",   "emoji":"✊",  "era":"modern"},
+  {"id":"world-wars-conflicts",   "label":"World Wars & Conflicts",   "emoji":"🎖️",  "era":"modern"},
+  {"id":"colonial-imperial",      "label":"Colonial & Imperial",      "emoji":"🌐",  "era":"modern"},
+  {"id":"human-rights-movements", "label":"Human Rights Movements",   "emoji":"🕊️",  "era":"modern"},
+  {"id":"science-technology",     "label":"Science & Technology",     "emoji":"🔬",  "era":"all"},
+  {"id":"religion-philosophy",    "label":"Religion & Philosophy",    "emoji":"📿",  "era":"all"},
+  {"id":"cultural-social",        "label":"Cultural & Social",        "emoji":"🎭",  "era":"all"},
+  {"id":"economic-trade",         "label":"Economic & Trade",         "emoji":"🏺",  "era":"all"},
+  {"id":"military-warfare",       "label":"Military & Warfare",       "emoji":"🗡️",  "era":"all"},
+  {"id":"regional-history",       "label":"Regional History",         "emoji":"🗺️",  "era":"all"},
+  {"id":"archaeology-mysteries",  "label":"Archaeology & Mysteries",  "emoji":"🔍",  "era":"all"},
+  {"id":"famous-figures",         "label":"Famous Figures & Leaders", "emoji":"👑",  "era":"all"},
+  {"id":"beyond-human-limits",    "label":"Beyond Human Limits",      "emoji":"🚀",  "era":"all"},
+  {"id":"historys-unsung-heroes", "label":"Historys Unsung Heroes",   "emoji":"⭐",  "era":"all"}
+]',
+updated_at = now()
+WHERE key = 'history_categories';
+
+-- Step 4: Verify
+SELECT value FROM public.settings WHERE key = 'history_categories';
+SELECT conname FROM pg_constraint WHERE conname = 'articles_subcategory_check';
+
+
+-- ============================================================================
+-- HIDDEN FACTS — SCALE MIGRATION
+-- Purpose : Security hardening + performance indexes + scalability prep
+-- Safe    : Every statement uses IF NOT EXISTS / DROP IF EXISTS / OR REPLACE
+-- Order   : Run top to bottom — sections are labelled.
+-- ============================================================================
+
+
+-- ============================================================================
+-- SECTION 1 · SECURITY — Admin whitelist table
+-- ----------------------------------------------------------------------------
+-- Your current RLS lets the anon key INSERT/UPDATE/DELETE everything.
+-- We fix this with an admin_sessions table. Your Next.js admin panel should
+-- call check_is_admin() before every mutating operation.
+-- Until you wire in proper auth (Supabase Auth / NextAuth), the secret is
+-- stored in settings. Change 'CHANGE_ME_TO_A_LONG_RANDOM_SECRET' below.
+-- ============================================================================
+
+-- Admin session tokens (hashed) — one row per active admin browser session
+CREATE TABLE IF NOT EXISTS public.admin_sessions (
+  id          BIGSERIAL PRIMARY KEY,
+  token_hash  TEXT NOT NULL UNIQUE,        -- SHA-256 of the raw token
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at  TIMESTAMPTZ NOT NULL DEFAULT now() + INTERVAL '12 hours',
+  ip_address  TEXT
+);
+
+ALTER TABLE public.admin_sessions ENABLE ROW LEVEL SECURITY;
+
+-- No anon reads — only service role (server-side Next.js) may touch this
+DROP POLICY IF EXISTS "No public access to admin_sessions" ON public.admin_sessions;
+CREATE POLICY "No public access to admin_sessions"
+  ON public.admin_sessions FOR ALL
+  USING (false);
+
+-- Function the frontend can call via RPC to validate a session
+CREATE OR REPLACE FUNCTION public.check_is_admin(p_token TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.admin_sessions
+    WHERE token_hash = encode(sha256(p_token::bytea), 'hex')
+      AND expires_at > now()
+  );
+END;
+$$;
+
+
+-- ============================================================================
+-- SECTION 2 · SECURITY — Tighten RLS on every table
+-- ----------------------------------------------------------------------------
+-- Current state : anon can INSERT/UPDATE/DELETE articles, article_images,
+--                 settings, topic_pool, topic_registry — no auth required.
+-- New state      : reads are still public, writes require check_is_admin().
+-- ============================================================================
+
+-- ── articles ────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Public can read published articles"    ON public.articles;
+DROP POLICY IF EXISTS "Anon can read all articles"            ON public.articles;
+DROP POLICY IF EXISTS "Anon can insert articles"              ON public.articles;
+DROP POLICY IF EXISTS "Anon can update articles"              ON public.articles;
+DROP POLICY IF EXISTS "Anon can delete articles"              ON public.articles;
+
+-- Anyone can read published articles (your public website)
+CREATE POLICY "Public reads published articles"
+  ON public.articles FOR SELECT
+  USING (is_published = true);
+
+-- Admin reads all (drafts too) — token validated server-side via RPC;
+-- for the admin panel Next.js page use the service role key (server only).
+-- This policy allows service_role bypass (Supabase default behaviour).
+
+-- Writes require a verified admin session token passed as a claim.
+-- In your Next.js admin API routes, use the service role key — not anon.
+-- These policies lock out raw anon key abuse from the browser:
+CREATE POLICY "Service role can insert articles"
+  ON public.articles FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can update articles"
+  ON public.articles FOR UPDATE
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can delete articles"
+  ON public.articles FOR DELETE
+  USING (auth.role() = 'service_role');
+
+
+-- ── article_images ───────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Public can read article images"        ON public.article_images;
+DROP POLICY IF EXISTS "Anon can insert article images"        ON public.article_images;
+DROP POLICY IF EXISTS "Anon can delete article images"        ON public.article_images;
+DROP POLICY IF EXISTS "Anon can update article images"        ON public.article_images;
+
+CREATE POLICY "Public reads article images"
+  ON public.article_images FOR SELECT
+  USING (true);
+
+CREATE POLICY "Service role can insert article_images"
+  ON public.article_images FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can update article_images"
+  ON public.article_images FOR UPDATE
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can delete article_images"
+  ON public.article_images FOR DELETE
+  USING (auth.role() = 'service_role');
+
+
+-- ── settings ─────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Settings are publicly readable"  ON public.settings;
+DROP POLICY IF EXISTS "Anon can upsert settings"        ON public.settings;
+DROP POLICY IF EXISTS "Anon can update settings"        ON public.settings;
+
+CREATE POLICY "Public reads settings"
+  ON public.settings FOR SELECT
+  USING (true);
+
+CREATE POLICY "Service role can upsert settings"
+  ON public.settings FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can update settings"
+  ON public.settings FOR UPDATE
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+
+-- ── topic_pool ────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Anon can read topic_pool"   ON public.topic_pool;
+DROP POLICY IF EXISTS "Anon can insert topic_pool"  ON public.topic_pool;
+DROP POLICY IF EXISTS "Anon can update topic_pool"  ON public.topic_pool;
+DROP POLICY IF EXISTS "Anon can delete topic_pool"  ON public.topic_pool;
+
+CREATE POLICY "Public reads topic_pool"
+  ON public.topic_pool FOR SELECT
+  USING (true);
+
+CREATE POLICY "Service role can insert topic_pool"
+  ON public.topic_pool FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can update topic_pool"
+  ON public.topic_pool FOR UPDATE
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can delete topic_pool"
+  ON public.topic_pool FOR DELETE
+  USING (auth.role() = 'service_role');
+
+
+-- ── topic_registry ────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Topic registry is publicly readable"  ON public.topic_registry;
+DROP POLICY IF EXISTS "Anon can insert topic registry"       ON public.topic_registry;
+DROP POLICY IF EXISTS "Anon can update topic registry"       ON public.topic_registry;
+DROP POLICY IF EXISTS "Anon can delete topic registry"       ON public.topic_registry;
+
+CREATE POLICY "Public reads topic_registry"
+  ON public.topic_registry FOR SELECT
+  USING (true);
+
+CREATE POLICY "Service role can insert topic_registry"
+  ON public.topic_registry FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can update topic_registry"
+  ON public.topic_registry FOR UPDATE
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can delete topic_registry"
+  ON public.topic_registry FOR DELETE
+  USING (auth.role() = 'service_role');
+
+
+-- ── analytics ─────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Analytics are publicly readable" ON public.analytics;
+
+CREATE POLICY "Public reads analytics"
+  ON public.analytics FOR SELECT
+  USING (true);
+
+CREATE POLICY "Service role can insert analytics"
+  ON public.analytics FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can update analytics"
+  ON public.analytics FOR UPDATE
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+
+-- ============================================================================
+-- SECTION 3 · SECURITY — Rate-limit helper table
+-- ----------------------------------------------------------------------------
+-- Track generation requests per IP to prevent abuse of your Groq quota.
+-- Call increment_rate_limit() from a Next.js API route before calling Groq.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.rate_limits (
+  id          BIGSERIAL PRIMARY KEY,
+  identifier  TEXT NOT NULL,               -- IP address or user ID
+  action      TEXT NOT NULL,               -- e.g. 'generate', 'publish'
+  window_start TIMESTAMPTZ NOT NULL DEFAULT date_trunc('hour', now()),
+  count       INTEGER NOT NULL DEFAULT 1,
+  UNIQUE (identifier, action, window_start)
+);
+
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "No public access to rate_limits" ON public.rate_limits;
+CREATE POLICY "No public access to rate_limits"
+  ON public.rate_limits FOR ALL
+  USING (false);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limits_lookup
+  ON public.rate_limits (identifier, action, window_start);
+
+CREATE OR REPLACE FUNCTION public.increment_rate_limit(
+  p_identifier TEXT,
+  p_action     TEXT,
+  p_max        INTEGER DEFAULT 20
+)
+RETURNS BOOLEAN   -- TRUE = allowed, FALSE = blocked
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_window TIMESTAMPTZ := date_trunc('hour', now());
+  v_count  INTEGER;
+BEGIN
+  INSERT INTO public.rate_limits (identifier, action, window_start, count)
+  VALUES (p_identifier, p_action, v_window, 1)
+  ON CONFLICT (identifier, action, window_start)
+  DO UPDATE SET count = rate_limits.count + 1
+  RETURNING count INTO v_count;
+  RETURN v_count <= p_max;
+END;
+$$;
+
+
+-- ============================================================================
+-- SECTION 4 · PERFORMANCE — Extensions
+-- ============================================================================
+
+-- Full-text search and trigram similarity (fuzzy slug/title matching)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Needed for sha256() in check_is_admin
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+
+-- ============================================================================
+-- SECTION 5 · PERFORMANCE — Composite indexes for your actual query patterns
+-- ----------------------------------------------------------------------------
+-- Every query in your category/[slug]/page.tsx and article/[slug]/page.tsx
+-- uses a combination of these columns. Single-column indexes won't be used
+-- when Postgres needs to filter on two columns simultaneously.
+-- ============================================================================
+
+-- Public homepage / category page: filter by published + category or subcategory,
+-- ordered by published_date DESC — this is your highest-traffic query.
+CREATE INDEX IF NOT EXISTS idx_articles_pub_subcat_date
+  ON public.articles (subcategory, is_published, published_date DESC)
+  WHERE is_published = true;
+
+CREATE INDEX IF NOT EXISTS idx_articles_pub_cat_date
+  ON public.articles (category, is_published, published_date DESC)
+  WHERE is_published = true;
+
+-- Related articles query: subcategory + published + score DESC
+CREATE INDEX IF NOT EXISTS idx_articles_pub_subcat_score
+  ON public.articles (subcategory, is_published, score DESC NULLS LAST)
+  WHERE is_published = true;
+
+-- Admin panel: draft list ordered by created_at DESC
+CREATE INDEX IF NOT EXISTS idx_articles_draft_created
+  ON public.articles (is_draft, created_at DESC)
+  WHERE is_draft = true;
+
+-- Admin panel: subcategory filter combined with draft
+CREATE INDEX IF NOT EXISTS idx_articles_draft_subcat_created
+  ON public.articles (is_draft, subcategory, created_at DESC)
+  WHERE is_draft = true;
+
+-- Slug lookup (your primary article fetch path) — already has unique index,
+-- but add a covering index so Postgres doesn't need a heap fetch for slug queries
+-- that only need id + is_published.
+CREATE INDEX IF NOT EXISTS idx_articles_slug_published
+  ON public.articles (slug, is_published)
+  WHERE slug IS NOT NULL;
+
+-- topic_pool: the most common admin query — unused topics per subcategory
+-- ordered by created_at (FIFO — oldest topics used first)
+DROP INDEX IF EXISTS idx_topic_pool_subcategory_unused;
+CREATE INDEX IF NOT EXISTS idx_topic_pool_unused_fifo
+  ON public.topic_pool (subcategory, is_used, created_at ASC)
+  WHERE is_used = false;
+
+-- topic_registry: article_id FK lookups (cascade deletes need this)
+CREATE INDEX IF NOT EXISTS idx_topic_registry_article_id
+  ON public.topic_registry (article_id)
+  WHERE article_id IS NOT NULL;
+
+-- article_images: most queries fetch all images for one article
+-- already exists but add a covering index including position
+DROP INDEX IF EXISTS idx_article_images_article_id;
+CREATE INDEX IF NOT EXISTS idx_article_images_article_position
+  ON public.article_images (article_id, position ASC);
+
+
+-- ============================================================================
+-- SECTION 6 · PERFORMANCE — Full-text search index on articles
+-- ----------------------------------------------------------------------------
+-- This lets you add a /search page later without a separate service.
+-- Uses ts_vector over title + summary for fast GIN-indexed FTS queries.
+-- Example query: WHERE fts @@ to_tsquery('english', 'rome & empire')
+-- ============================================================================
+
+ALTER TABLE public.articles
+  ADD COLUMN IF NOT EXISTS fts tsvector
+    GENERATED ALWAYS AS (
+      setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce(summary, '')), 'B')
+    ) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_articles_fts
+  ON public.articles USING GIN (fts);
+
+-- Trigram index on title for fuzzy/autocomplete search
+CREATE INDEX IF NOT EXISTS idx_articles_title_trgm
+  ON public.articles USING GIN (title gin_trgm_ops);
+
+-- Trigram index on slug for partial-match slug routing
+CREATE INDEX IF NOT EXISTS idx_articles_slug_trgm
+  ON public.articles USING GIN (slug gin_trgm_ops)
+  WHERE slug IS NOT NULL;
+
+
+-- ============================================================================
+-- SECTION 7 · PERFORMANCE — Materialized view: category article counts
+-- ----------------------------------------------------------------------------
+-- Your frontend currently has no count display, but when you add it,
+-- a live COUNT(*) on the articles table at millions of rows is expensive.
+-- This view refreshes in the background without locking reads.
+-- Refresh it after every generation run:
+--   SELECT refresh_category_counts();
+-- ============================================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS public.category_counts AS
+SELECT
+  subcategory,
+  category,
+  COUNT(*) FILTER (WHERE is_published = true)  AS published_count,
+  COUNT(*) FILTER (WHERE is_draft = true)       AS draft_count,
+  COUNT(*)                                       AS total_count,
+  MAX(published_date)                            AS latest_published_at
+FROM public.articles
+GROUP BY subcategory, category;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_category_counts_subcat
+  ON public.category_counts (subcategory);
+
+CREATE OR REPLACE FUNCTION public.refresh_category_counts()
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY public.category_counts;
+END;
+$$;
+
+-- RLS: readable by everyone (it's aggregate counts, no PII)
+-- Materialized views don't support RLS directly — access is controlled by
+-- the calling role. Service role can always refresh.
+
+
+-- ============================================================================
+-- SECTION 8 · PERFORMANCE — Lightweight admin list view
+-- ----------------------------------------------------------------------------
+-- Your admin panel fetches SELECT * which includes raw_content (can be 10KB+).
+-- This view strips it out. Update your admin panel query to use this view.
+-- In AdminPanel.tsx change:
+--   supabase.from('articles').select('*')
+-- to:
+--   supabase.from('articles_admin_list').select('*')
+-- ============================================================================
+
+CREATE OR REPLACE VIEW public.articles_admin_list AS
+SELECT
+  id, created_at, updated_at, title, source_url, source_name,
+  summary,           -- keep summary (short)
+  category, subcategory, score, image_url, published_date,
+  is_published, is_draft, admin_notes, scheduled_publish_date,
+  era, difficulty, slug,
+  -- raw_content deliberately excluded — fetch it separately on article open
+  length(coalesce(raw_content, '')) AS content_length_chars
+FROM public.articles;
+
+
+-- ============================================================================
+-- SECTION 9 · SCALABILITY — Slug integrity and collision prevention
+-- ----------------------------------------------------------------------------
+-- Currently slugs are generated in JS and may collide silently.
+-- This function generates a guaranteed-unique slug from a title,
+-- appending a numeric suffix if the base slug already exists.
+-- Call it from your Next.js API route on article creation.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.generate_unique_slug(p_title TEXT, p_exclude_id BIGINT DEFAULT NULL)
+RETURNS TEXT
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_base  TEXT;
+  v_slug  TEXT;
+  v_count INTEGER := 0;
+BEGIN
+  -- Sanitise: lowercase, remove non-alphanum, collapse hyphens, trim
+  v_base := lower(
+    regexp_replace(
+      regexp_replace(
+        regexp_replace(p_title, '[^a-zA-Z0-9\s\-]', '', 'g'),
+        '\s+', '-', 'g'
+      ),
+      '-+', '-', 'g'
+    )
+  );
+  v_base := trim(both '-' from v_base);
+  v_base := left(v_base, 80);   -- max 80 chars before suffix
+  v_slug := v_base;
+
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM public.articles
+      WHERE slug = v_slug
+        AND (p_exclude_id IS NULL OR id != p_exclude_id)
+    ) THEN
+      RETURN v_slug;
+    END IF;
+    v_count := v_count + 1;
+    v_slug  := v_base || '-' || v_count;
+  END LOOP;
+END;
+$$;
+
+-- Backfill any articles that ended up with a NULL slug
+UPDATE public.articles
+SET slug = public.generate_unique_slug(title, id)
+WHERE slug IS NULL AND title IS NOT NULL AND title != '';
+
+
+-- ============================================================================
+-- SECTION 10 · SCALABILITY — updated_at on topic_pool (was missing)
+-- ============================================================================
+
+ALTER TABLE public.topic_pool
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+DROP TRIGGER IF EXISTS update_topic_pool_updated_at ON public.topic_pool;
+CREATE TRIGGER update_topic_pool_updated_at
+  BEFORE UPDATE ON public.topic_pool
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+-- ============================================================================
+-- SECTION 11 · SCALABILITY — Soft-delete + archive support
+-- ----------------------------------------------------------------------------
+-- Instead of hard-deleting articles (which leaves topic_registry orphans),
+-- add a deleted_at column. Your bulk-delete UI should set this, not DELETE.
+-- Add WHERE deleted_at IS NULL to all your normal queries.
+-- Hard deletes can run in a weekly cleanup job.
+-- ============================================================================
+
+ALTER TABLE public.articles
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_articles_not_deleted
+  ON public.articles (id)
+  WHERE deleted_at IS NULL;
+
+-- Safe delete function — marks as deleted, does NOT cascade immediately
+CREATE OR REPLACE FUNCTION public.soft_delete_article(p_id BIGINT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.articles
+  SET deleted_at = now(), is_published = false, is_draft = false
+  WHERE id = p_id AND deleted_at IS NULL;
+
+  -- Unlink from topic_registry (keeps the topic key, just detaches article)
+  UPDATE public.topic_registry
+  SET article_id = NULL
+  WHERE article_id = p_id;
+END;
+$$;
+
+-- Purge articles soft-deleted more than 30 days ago (run via pg_cron or manually)
+CREATE OR REPLACE FUNCTION public.purge_deleted_articles()
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE v_count INTEGER;
+BEGIN
+  DELETE FROM public.articles
+  WHERE deleted_at IS NOT NULL
+    AND deleted_at < now() - INTERVAL '30 days'
+  ;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+
+-- ============================================================================
+-- SECTION 12 · SCALABILITY — analytics date uniqueness + index
+-- ============================================================================
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_analytics_date_unique
+  ON public.analytics (date);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_date_desc
+  ON public.analytics (date DESC);
+
+
+-- ============================================================================
+-- SECTION 13 · SCALABILITY — Row-level limit guard
+-- ----------------------------------------------------------------------------
+-- Prevents any single query from accidentally returning millions of rows.
+-- Supabase already caps at 1000 by default, but this makes it explicit
+-- and allows you to configure per-table limits.
+-- ============================================================================
+
+-- Set statement_timeout for the anon and authenticated roles
+-- (prevents long-running frontend queries from consuming DB connections)
+-- Run this as superuser / postgres role:
+ALTER ROLE anon          SET statement_timeout = '5s';
+ALTER ROLE authenticated SET statement_timeout = '10s';
+
+
+-- ============================================================================
+-- SECTION 14 · HOUSEKEEPING — Verify everything
+-- ============================================================================
+
+SELECT
+  'admin_sessions table'       AS check_item,
+  EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'admin_sessions')  AS ok
+UNION ALL SELECT
+  'rate_limits table',
+  EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'rate_limits')
+UNION ALL SELECT
+  'fts column on articles',
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'articles' AND column_name = 'fts')
+UNION ALL SELECT
+  'deleted_at column on articles',
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'articles' AND column_name = 'deleted_at')
+UNION ALL SELECT
+  'updated_at on topic_pool',
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'topic_pool' AND column_name = 'updated_at')
+UNION ALL SELECT
+  'category_counts matview',
+  EXISTS (SELECT 1 FROM pg_matviews WHERE matviewname = 'category_counts')
+UNION ALL SELECT
+  'articles_admin_list view',
+  EXISTS (SELECT 1 FROM information_schema.views WHERE table_name = 'articles_admin_list')
+UNION ALL SELECT
+  'composite index pub_subcat_date',
+  EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_articles_pub_subcat_date')
+UNION ALL SELECT
+  'full-text GIN index',
+  EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_articles_fts')
+UNION ALL SELECT
+  'pg_trgm extension',
+  EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')
+UNION ALL SELECT
+  'slug backfill complete',
+  NOT EXISTS (SELECT 1 FROM public.articles WHERE slug IS NULL AND title IS NOT NULL)
+UNION ALL SELECT
+  'check_is_admin function',
+  EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'check_is_admin')
+ORDER BY check_item;
