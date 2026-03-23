@@ -67,8 +67,6 @@ export default async function CategoryPage({
 }) {
   const { slug } = await params;
 
-  // ── CHANGED: added .is('deleted_at', null) to prevent soft-deleted
-  //    articles from appearing on public category pages ──
   let query = supabase
     .from('articles')
     .select('id, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
@@ -138,6 +136,7 @@ export default async function CategoryPage({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0">
                 {articles.map((article, i) => (
+                  // @ts-ignore — article prop is correct, TS resolves wrong overload
                   <ArticleCard key={article.id} article={article as Article} index={i} />
                 ))}
               </div>

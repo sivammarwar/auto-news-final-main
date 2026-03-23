@@ -1,46 +1,26 @@
 'use client';
 
 // src/components/ArticleGrid.tsx
-// Client component that handles:
-//   1. Search bar (filters articles by title/summary client-side)
-//   2. "Load more" pagination — reveals 12 articles at a time
-// The parent (page.tsx) fetches all articles server-side and passes them here.
-
 import { useState, useMemo, useRef, useEffect } from 'react';
 import ArticleCard from '@/components/ArticleCard';
+import { Article } from '@/types/article'; // ← import shared type, no local duplicate
 
 const PAGE_SIZE = 12;
-
-interface Article {
-  id: number;
-  slug: string;
-  title: string;
-  summary?: string;
-  category?: string;
-  subcategory?: string;
-  image_url?: string;
-  published_date: string;
-  source_name?: string;
-  score?: number;
-  [key: string]: any;
-}
 
 interface Props {
   articles: Article[];
 }
 
 export default function ArticleGrid({ articles }: Props) {
-  const [query, setQuery]       = useState('');
+  const [query, setQuery]               = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [searchOpen, setSearchOpen]     = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset pagination whenever search query changes
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [query]);
 
-  // Focus input when search bar opens
   useEffect(() => {
     if (searchOpen) inputRef.current?.focus();
   }, [searchOpen]);
@@ -98,12 +78,13 @@ export default function ArticleGrid({ articles }: Props) {
         </button>
       </div>
 
-      {/* ── Full-width search bar — own row, slides in below header ── */}
+      {/* ── Full-width search bar ── */}
       <div
         className={`overflow-hidden transition-all duration-300 ease-in-out ${
           searchOpen ? 'max-h-24 opacity-100 mb-6 sm:mb-8' : 'max-h-0 opacity-0 mb-0'
         }`}
-        aria-hidden={!searchOpen}
+        // @ts-ignore — inert is valid HTML but not yet in React TS types
+        inert={!searchOpen ? '' : undefined}
       >
         <div className="relative w-full">
           <svg
@@ -155,7 +136,7 @@ export default function ArticleGrid({ articles }: Props) {
       {visible.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0">
           {visible.map((article, i) => (
-            <ArticleCard key={article.id} article={article as any} index={i} />
+            <ArticleCard key={article.id} article={article} index={i} />
           ))}
         </div>
       )}
@@ -176,7 +157,7 @@ export default function ArticleGrid({ articles }: Props) {
             </svg>
             Load more articles
           </button>
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground/60">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground/80">
             {remaining} more article{remaining !== 1 ? 's' : ''} remaining
           </span>
         </div>
