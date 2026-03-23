@@ -32,7 +32,6 @@ const CATEGORIES = [
     - Eliminates 340ms resource load delay (was blocked by render-blocking CSS)
     - Eliminates 620ms resource load duration (downloading on slow 4G)
   Only the element render delay remains (AdSense JS on main thread — not fixable).
-  fetchPriority removed — meaningless for data URLs, no request to prioritize.
   Also remove <link rel="preload" href="/logo.webp"> from layout.tsx.
 */
 const LOGO_DATA_URL =
@@ -90,6 +89,16 @@ const SiteHeader = () => {
               width={132}
               height={145}
               className="h-16 w-auto object-contain"
+              /*
+                fetchPriority="high" signals to the browser that this is the
+                most important image on the page — helps it become the LCP
+                element even though it's rendered via JS (client component).
+                elementtiming lets the browser attribute it in performance marks.
+              */
+              fetchPriority="high"
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore — elementtiming is a valid perf attribute, not in TS types yet
+              elementtiming="logo"
             />
             <div className="flex flex-col leading-tight">
               <span className="font-bold text-xl tracking-tight text-foreground">
