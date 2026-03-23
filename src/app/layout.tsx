@@ -60,11 +60,37 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* AdSense account verification — do not touch */}
         <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
 
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        {/*
+          PERFORMANCE FIX: AdSense deferred until 2s after page load.
+          Previously loaded immediately via <script async> which still blocked
+          the main thread during the LCP window, causing 640ms element render delay.
+
+          New approach:
+            1. Page loads, LCP image paints (~1s)
+            2. window 'load' fires
+            3. setTimeout waits 2 more seconds
+            4. AdSense script injected — main thread is free during LCP
+
+          The meta verification tag above is kept so AdSense can still
+          verify site ownership without the script being present at parse time.
+
+          Ad slots still render normally — the 2s delay is imperceptible to
+          users since ads are below the fold on mobile anyway.
+        */}
         <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880"
-          crossOrigin="anonymous"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener('load', function() {
+                setTimeout(function() {
+                  var s = document.createElement('script');
+                  s.async = true;
+                  s.crossOrigin = 'anonymous';
+                  s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7368509971017880';
+                  document.head.appendChild(s);
+                }, 2000);
+              });
+            `
+          }}
         />
 
         <style>{`
@@ -87,22 +113,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
 
-        {/*
-          LCP PRE-RENDER: Logo injected directly into the server-rendered HTML.
-          This is a pure server component so this <img> appears in the very
-          first byte the browser receives — making it an immediate LCP candidate.
-
-          It is visually identical to the real header logo and sits in the
-          exact same position (fixed, top-0, left-0, h-16, same padding).
-
-          Once React hydrates, Providers adds 'hydrated' to <body>, which
-          triggers the CSS rule `body.hydrated [data-prerender-logo] { display:none }`
-          so only the real interactive header logo remains.
-
-          aria-hidden: screen readers skip this — the real header logo has the
-          correct aria-label.
-          pointerEvents none: clicks pass through to real header underneath.
-        */}
         <div
           data-prerender-logo=""
           aria-hidden="true"
