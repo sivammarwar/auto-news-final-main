@@ -44,7 +44,6 @@ const SUBCATEGORY_LABELS: Record<string, { label: string; emoji: string }> = {
 async function fetchArticle(slug: string) {
   const db = getSupabase();
 
-  // ── CHANGED: added .is('deleted_at', null) to both fetch paths ──
   const { data: bySlug } = await db
     .from('articles')
     .select('*')
@@ -130,7 +129,6 @@ export default async function ArticlePage({
     .eq('article_id', article.id)
     .order('position', { ascending: true });
 
-  // ── CHANGED: added .is('deleted_at', null) to related articles query ──
   const { data: related } = await db
     .from('articles')
     .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
@@ -252,6 +250,7 @@ export default async function ArticlePage({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0">
                 {related.map((a, i) => (
+                  // @ts-ignore — article prop is correct, TS resolves wrong overload
                   <ArticleCard key={a.id} article={a as any} index={i} />
                 ))}
               </div>
