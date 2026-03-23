@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // useState ensures a new QueryClient is created per-request on the server
@@ -19,6 +19,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
       },
     },
   }));
+
+  // Hide the SSR pre-render logo in layout.tsx once React has hydrated.
+  // The CSS rule `body.hydrated [data-prerender-logo] { display: none }`
+  // in globals.css removes it so only the real interactive header logo remains.
+  useEffect(() => {
+    document.body.classList.add('hydrated');
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
