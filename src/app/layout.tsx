@@ -56,7 +56,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head>
+      <head suppressHydrationWarning>
         {/* AdSense account verification — do not touch */}
         <meta name="google-adsense-account" content="ca-pub-7368509971017880" />
 
@@ -66,7 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             1. AdSense validator rejects → logs warning in console
             2. Causes React hydration mismatch (error #418) because the
                attribute is present server-side but AdSense strips it client-side
-          Plain <script async> in <head> is exactly what Google's docs specify.
+          Plain <script async> in <head suppressHydrationWarning> is exactly what Google's docs specify.
           It loads after HTML parse (async) so it doesn't block rendering.
         */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
