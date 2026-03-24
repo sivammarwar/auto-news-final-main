@@ -2,6 +2,7 @@
 
 import { Article } from '@/types/article';
 import { formatDistanceToNow } from 'date-fns';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -31,55 +32,10 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
   'historys-unsung-heroes': { label: "History's Unsung Heroes",  emoji: '⭐' },
 };
 
-/**
- * Resizes and converts images to WebP for both Pexels and Supabase sources.
- *
- * Pexels: uses their query-param API (fm=webp, w, q, auto, cs, fit).
- * Supabase: uses their built-in storage transform API (format, width, quality).
- *
- * FIX: Previously only handled Pexels URLs. Supabase images (PNG/JPEG)
- * were served raw — a 3.3 MB PNG was being loaded with fetchpriority="high"
- * on the first card, making it the LCP element at 20.7s. Now all image
- * sources are optimised to WebP at the correct display size.
- */
-function resizeImage(url: string, width = 400, quality = 70): string {
-  if (!url) return url;
-
-  // ── Pexels ──────────────────────────────────────────────────────────────
-  if (url.includes('pexels.com')) {
-    try {
-      const u = new URL(url);
-      u.search = '';
-      u.searchParams.set('w', String(width));
-      u.searchParams.set('q', String(quality));
-      u.searchParams.set('auto', 'compress');
-      u.searchParams.set('cs', 'tinysrgb');
-      u.searchParams.set('fit', 'crop');
-      u.searchParams.set('fm', 'webp');
-      return u.toString();
-    } catch {
-      return url;
-    }
-  }
-
-  // ── Supabase Storage ─────────────────────────────────────────────────────
-  // Supabase supports image transforms via query params on public storage URLs.
-  // Docs: https://supabase.com/docs/guides/storage/serving/image-transformations
-  if (url.includes('supabase.co/storage')) {
-    try {
-      const u = new URL(url);
-      u.searchParams.set('width', String(width));
-      u.searchParams.set('quality', String(quality));
-      u.searchParams.set('format', 'webp');
-      return u.toString();
-    } catch {
-      return url;
-    }
-  }
-
-  // ── Wikimedia / other sources ─────────────────────────────────────────────
-  return url;
-}
+// pexelsResize and resizeImage helpers are intentionally removed.
+// Next.js <Image> handles resizing, WebP/AVIF conversion, and caching
+// for ALL sources (Pexels, Supabase, Wikimedia) via Vercel's image CDN,
+// provided their hostnames are listed in next.config.ts remotePatterns.
 
 const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
   const router  = useRouter();
@@ -136,21 +92,37 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
       style={shouldAnimate ? { animationDelay: `${index * 50}ms` } : undefined}
     >
       {article.image_url && (
-        <div className="aspect-video overflow-hidden mb-4 rounded-lg bg-muted">
-          <img
-            src={resizeImage(article.image_url, 400, 70)}
+        <div className="aspect-video overflow-hidden mb-4 rounded-lg bg-muted relative">
+          {/*
+            FIX: Replaced raw <img> with Next.js <Image>.
+
+            Previously a raw <img> tag was used with a manual pexelsResize()
+            helper that only handled Pexels URLs — Supabase images fell through
+            and were served as raw files (3.3 MB PNG → 20s LCP on mobile).
+
+            Next.js <Image> handles ALL sources automatically:
+            - Resizes to the requested width (400px here)
+            - Converts to AVIF or WebP based on browser Accept header
+            - Serves via Vercel's edge image CDN with 7-day cache
+            - Generates correct srcset for responsive display
+            - No manual URL manipulation needed for any image source
+
+            `sizes` tells the browser how wide the image actually renders so it
+            can pick the right srcset entry — prevents downloading oversized
+            images on small screens.
+
+            All cards use loading="lazy" / priority={false} (the default).
+            Card thumbnails are never the intended LCP element — the logo is.
+          */}
+          <Image
+            src={article.image_url}
             alt={article.title}
             width={400}
             height={225}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            // FIX: All card images are lazy-loaded with auto priority.
-            // Previously index===0 got eager+high+sync, which crowned a 3.3MB
-            // Supabase PNG as the LCP element (20.7s). Card thumbnails are
-            // never the intended LCP — the logo is. Let the browser decide
-            // naturally; the inline base64 logo will win LCP correctly.
             loading="lazy"
-            fetchPriority="auto"
-            decoding="async"
+            quality={70}
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
           />
         </div>
       )}

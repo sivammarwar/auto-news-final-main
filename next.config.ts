@@ -23,7 +23,7 @@ const securityHeaders = [
         'https://*.googlesyndication.com',
         'https://*.adtrafficquality.google',
         'https://va.vercel-scripts.com',
-        'https://fundingchoicesmessages.google.com', // ← AdSense consent script
+        'https://fundingchoicesmessages.google.com',
       ].join(' '),
       "style-src 'self' 'unsafe-inline'",
       [
@@ -52,7 +52,7 @@ const securityHeaders = [
         'https://*.doubleclick.net',
         'https://adservice.google.com',
         'https://va.vercel-scripts.com',
-        'https://fundingchoicesmessages.google.com', // ← AdSense consent API calls
+        'https://fundingchoicesmessages.google.com',
       ].join(' '),
       [
         'frame-src',
@@ -82,8 +82,18 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**.pexels.com' },
       { protocol: 'https', hostname: '**.wikimedia.org' },
       { protocol: 'https', hostname: '**.wikipedia.org' },
+      // FIX: Added Supabase so Next.js Image optimisation applies to article
+      // hero images stored there. Without this entry Next.js throws at runtime
+      // and falls back to serving the raw unoptimised file — in this case a
+      // 3.3 MB PNG that was causing a 20s LCP on mobile (Slow 4G throttling).
+      // Next.js will now resize to the requested width, convert to WebP/AVIF,
+      // cache for minimumCacheTTL seconds, and serve via Vercel's image CDN.
+      { protocol: 'https', hostname: '**.supabase.co' },
     ],
+    // Prefer AVIF (better compression than WebP), fall back to WebP.
+    // Next.js serves whichever format the browser's Accept header supports.
     formats: ['image/avif', 'image/webp'],
+    // Cache optimised images for 7 days (604800 s).
     minimumCacheTTL: 604800,
   },
 
