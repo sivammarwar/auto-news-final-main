@@ -31,25 +31,54 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
   'historys-unsung-heroes': { label: "History's Unsung Heroes",  emoji: '⭐' },
 };
 
-// ── FIX: Added fm=webp — Pexels serves WebP natively via this param.
-// PageSpeed flagged 3 card images serving JPEG totalling 32KB of wasted bytes.
-// WebP at q=75 is ~30-40% smaller with no visible quality difference.
-// Also reduced quality from 75→70 for card thumbnails — acceptable at 400px.
-function pexelsResize(url: string, width = 400, quality = 70): string {
-  if (!url || !url.includes('pexels.com')) return url;
-  try {
-    const u = new URL(url);
-    u.search = '';
-    u.searchParams.set('w', String(width));
-    u.searchParams.set('q', String(quality));
-    u.searchParams.set('auto', 'compress');
-    u.searchParams.set('cs', 'tinysrgb');
-    u.searchParams.set('fit', 'crop');
-    u.searchParams.set('fm', 'webp');      // ── CHANGED: force WebP format
-    return u.toString();
-  } catch {
-    return url;
+/**
+ * Resizes and converts images to WebP for both Pexels and Supabase sources.
+ *
+ * Pexels: uses their query-param API (fm=webp, w, q, auto, cs, fit).
+ * Supabase: uses their built-in storage transform API (format, width, quality).
+ *
+ * FIX: Previously only handled Pexels URLs. Supabase images (PNG/JPEG)
+ * were served raw — a 3.3 MB PNG was being loaded with fetchpriority="high"
+ * on the first card, making it the LCP element at 20.7s. Now all image
+ * sources are optimised to WebP at the correct display size.
+ */
+function resizeImage(url: string, width = 400, quality = 70): string {
+  if (!url) return url;
+
+  // ── Pexels ──────────────────────────────────────────────────────────────
+  if (url.includes('pexels.com')) {
+    try {
+      const u = new URL(url);
+      u.search = '';
+      u.searchParams.set('w', String(width));
+      u.searchParams.set('q', String(quality));
+      u.searchParams.set('auto', 'compress');
+      u.searchParams.set('cs', 'tinysrgb');
+      u.searchParams.set('fit', 'crop');
+      u.searchParams.set('fm', 'webp');
+      return u.toString();
+    } catch {
+      return url;
+    }
   }
+
+  // ── Supabase Storage ─────────────────────────────────────────────────────
+  // Supabase supports image transforms via query params on public storage URLs.
+  // Docs: https://supabase.com/docs/guides/storage/serving/image-transformations
+  if (url.includes('supabase.co/storage')) {
+    try {
+      const u = new URL(url);
+      u.searchParams.set('width', String(width));
+      u.searchParams.set('quality', String(quality));
+      u.searchParams.set('format', 'webp');
+      return u.toString();
+    } catch {
+      return url;
+    }
+  }
+
+  // ── Wikimedia / other sources ─────────────────────────────────────────────
+  return url;
 }
 
 const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
@@ -109,14 +138,19 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
       {article.image_url && (
         <div className="aspect-video overflow-hidden mb-4 rounded-lg bg-muted">
           <img
-            src={pexelsResize(article.image_url, 400, 70)}
+            src={resizeImage(article.image_url, 400, 70)}
             alt={article.title}
             width={400}
             height={225}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            loading={index === 0 ? 'eager' : 'lazy'}
-            fetchPriority={index === 0 ? 'high' : 'auto'}
-            decoding={index === 0 ? 'sync' : 'async'}
+            // FIX: All card images are lazy-loaded with auto priority.
+            // Previously index===0 got eager+high+sync, which crowned a 3.3MB
+            // Supabase PNG as the LCP element (20.7s). Card thumbnails are
+            // never the intended LCP — the logo is. Let the browser decide
+            // naturally; the inline base64 logo will win LCP correctly.
+            loading="lazy"
+            fetchPriority="auto"
+            decoding="async"
           />
         </div>
       )}
