@@ -32,11 +32,6 @@ const SUBCATEGORY_META: Record<string, { label: string; emoji: string }> = {
   'historys-unsung-heroes': { label: "History's Unsung Heroes",  emoji: '⭐' },
 };
 
-// pexelsResize and resizeImage helpers are intentionally removed.
-// Next.js <Image> handles resizing, WebP/AVIF conversion, and caching
-// for ALL sources (Pexels, Supabase, Wikimedia) via Vercel's image CDN,
-// provided their hostnames are listed in next.config.ts remotePatterns.
-
 const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
   const router  = useRouter();
   const [active, setActive] = useState(false);
@@ -70,6 +65,10 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
     ? `${subcatMeta.emoji} ${subcatMeta.label}`
     : article.category;
 
+  // Whether this card is likely to be the LCP element.
+  // index 0 = first card in the grid = above the fold on all viewports.
+  const isLCP = index === 0;
+
   return (
     <div
       role="article"
@@ -93,36 +92,28 @@ const ArticleCard = ({ article, index = 0 }: ArticleCardProps) => {
     >
       {article.image_url && (
         <div className="aspect-video overflow-hidden mb-4 rounded-lg bg-muted relative">
-          {/*
-            FIX: Replaced raw <img> with Next.js <Image>.
-
-            Previously a raw <img> tag was used with a manual pexelsResize()
-            helper that only handled Pexels URLs — Supabase images fell through
-            and were served as raw files (3.3 MB PNG → 20s LCP on mobile).
-
-            Next.js <Image> handles ALL sources automatically:
-            - Resizes to the requested width (400px here)
-            - Converts to AVIF or WebP based on browser Accept header
-            - Serves via Vercel's edge image CDN with 7-day cache
-            - Generates correct srcset for responsive display
-            - No manual URL manipulation needed for any image source
-
-            `sizes` tells the browser how wide the image actually renders so it
-            can pick the right srcset entry — prevents downloading oversized
-            images on small screens.
-
-            All cards use loading="lazy" / priority={false} (the default).
-            Card thumbnails are never the intended LCP element — the logo is.
-          */}
           <Image
             src={article.image_url}
             alt={article.title}
             width={400}
             height={225}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            loading="lazy"
             quality={70}
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
+            // FIX: priority={true} on the first card sets fetchpriority="high"
+            // and loading="eager" automatically via Next.js — exactly what
+            // Lighthouse's "LCP request discovery" audit requires.
+            //
+            // When priority={true}, Next.js also injects a <link rel="preload">
+            // in the <head> for this image, making it discoverable before the
+            // JS bundle even executes. This is why you must NOT also set
+            // loading="lazy" for index 0 — Next.js will warn about conflicting
+            // props and the preload hint won't fire correctly.
+            //
+            // All other cards (index > 0) get priority={false} which is the
+            // default — they remain lazy-loaded with fetchpriority="auto".
+            priority={isLCP}
+            loading={isLCP ? undefined : 'lazy'}
           />
         </div>
       )}
