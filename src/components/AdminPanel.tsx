@@ -168,6 +168,8 @@ const TARGET_IMAGES          = 2;
 const MIN_IMAGES_TO_PUBLISH  = 2;
 const IMAGE_MIN_WIDTH        = 800;
 const LOW_TOPIC_WARNING      = 10;
+// ─── Storage bucket name — must match exactly what you created in Supabase ───
+const STORAGE_BUCKET         = 'article-images';
 
 const nowTS  = () => new Date().toLocaleTimeString('en-IN', { hour12: false });
 const sleep  = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -407,6 +409,32 @@ async function fetchAndSaveImages(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// ENSURE STORAGE BUCKET EXISTS
+// ════════════════════════════════════════════════════════════════════════════
+async function ensureStorageBucket(): Promise<{ ok: boolean; message: string }> {
+  try {
+    // Check if bucket already exists
+    const { data: buckets, error: listErr } = await supabase.storage.listBuckets();
+    if (listErr) return { ok: false, message: `Cannot list buckets: ${listErr.message}` };
+
+    const exists = (buckets ?? []).some(b => b.name === STORAGE_BUCKET);
+    if (exists) return { ok: true, message: 'Bucket already exists' };
+
+    // Create the bucket
+    const { error: createErr } = await supabase.storage.createBucket(STORAGE_BUCKET, {
+      public: true,
+      fileSizeLimit: 5 * 1024 * 1024, // 5 MB
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+    });
+
+    if (createErr) return { ok: false, message: `Bucket creation failed: ${createErr.message}` };
+    return { ok: true, message: `Bucket "${STORAGE_BUCKET}" created successfully` };
+  } catch (e: any) {
+    return { ok: false, message: `Unexpected error: ${e?.message ?? String(e)}` };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════════════════
 export default function AdminPanel({ adminPassword }: { adminPassword: string }) {
@@ -436,6 +464,9 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
   const [topicSaveMsg, setTopicSaveMsg]       = useState<string | null>(null);
   const [showTopicPool, setShowTopicPool]     = useState(false);
   const [topicDebugMsg, setTopicDebugMsg]     = useState<string | null>(null);
+  // ── NEW: bucket status ──────────────────────────────────────────────────
+  const [bucketStatus, setBucketStatus]       = useState<{ ok: boolean; message: string } | null>(null);
+  const [checkingBucket, setCheckingBucket]   = useState(false);
 
   const logContainerRef = useRef<HTMLDivElement>(null);
   const stopRef         = useRef(false);
@@ -443,6 +474,9 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
 
   useEffect(() => { fetchArticles(); }, [filter, filterCat]);
   useEffect(() => { fetchTopicPoolCounts(); }, []);
+  // ── Check / create storage bucket on mount ──────────────────────────────
+  useEffect(() => { checkBucket(); }, []);
+
   useEffect(() => {
     const c = logContainerRef.current;
     if (c) c.scrollTop = c.scrollHeight;
@@ -451,6 +485,14 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
   const addLog = useCallback((message: string, type: GenLog['type'] = 'info') => {
     setGenLogs(prev => [...prev.slice(-400), { id: Date.now() + Math.random(), message, type, ts: nowTS() }]);
   }, []);
+
+  // ── BUCKET CHECK / CREATE ─────────────────────────────────────────────────
+  const checkBucket = async () => {
+    setCheckingBucket(true);
+    const result = await ensureStorageBucket();
+    setBucketStatus(result);
+    setCheckingBucket(false);
+  };
 
   // ── TOPIC POOL COUNTS ─────────────────────────────────────────────────────
   const fetchTopicPoolCounts = async () => {
@@ -765,35 +807,110 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
     finally { setRefetchingImages(false); }
   };
 
-  // ── IMAGE UPLOAD ───────────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════════════════
+  // IMAGE UPLOAD — FIXED
+  // Key changes vs original:
+  //   1. Removed img.onload/onerror wrapper — caused silent failures on
+  //      CORS/CDN latency. We skip dimension detection and use safe defaults.
+  //   2. Sets article cover image_url when this is the first image.
+  //   3. Refreshes the article panel after upload so the new image shows.
+  // ════════════════════════════════════════════════════════════════════════
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedArticle || !e.target.files?.length) return;
     const file = e.target.files[0];
+
+    // Basic client-side validation
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('Only JPG, PNG, WebP, or GIF images are allowed.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5 MB.');
+      e.target.value = '';
+      return;
+    }
+
     setUploading(true); setError(null);
     try {
-      const path = `${selectedArticle.id}/${Date.now()}-${file.name}`;
-      const { error: upErr } = await supabase.storage.from('article-images').upload(path, file, { upsert: true });
-      if (upErr) throw upErr;
-      const { data: { publicUrl } } = supabase.storage.from('article-images').getPublicUrl(path);
-      await new Promise<void>((res, rej) => {
-        const img = new Image();
-        img.onload = async () => {
-          try {
-            const { error: imgErr } = await adminPost('insert_images', [{
-              article_id: selectedArticle.id, image_url: publicUrl,
-              position: images.length, width: img.width, height: img.height,
-              size_kb: Math.round(file.size / 1024), alt_text: 'Article image', image_source: 'upload'
-            }], adminPassword) as { error: any };
-            if (imgErr) throw new Error(imgErr.message);
-            await selectArticle(selectedArticle);
-            setSuccess('✅ Uploaded!'); setTimeout(() => setSuccess(null), 3000); res();
-          } catch (err) { rej(err); }
-        };
-        img.onerror = () => rej(new Error('Failed to read image'));
-        img.src = publicUrl;
-      });
-    } catch (e: any) { setError('Upload failed: ' + e.message); }
-    finally { setUploading(false); e.target.value = ''; }
+      // ── Step 1: Upload file to Supabase Storage ──────────────────────────
+      const ext  = file.name.split('.').pop() ?? 'jpg';
+      const path = `${selectedArticle.id}/${Date.now()}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(path, file, { upsert: true, contentType: file.type });
+
+      if (upErr) {
+        // Bucket may not exist yet — try creating it, then retry once
+        if (upErr.message?.toLowerCase().includes('bucket')) {
+          const bucketResult = await ensureStorageBucket();
+          setBucketStatus(bucketResult);
+          if (!bucketResult.ok) throw new Error(`Storage bucket error: ${bucketResult.message}`);
+
+          const { error: retryErr } = await supabase.storage
+            .from(STORAGE_BUCKET)
+            .upload(path, file, { upsert: true, contentType: file.type });
+          if (retryErr) throw retryErr;
+        } else {
+          throw upErr;
+        }
+      }
+
+      // ── Step 2: Get the public CDN URL ───────────────────────────────────
+      const { data: { publicUrl } } = supabase.storage
+        .from(STORAGE_BUCKET)
+        .getPublicUrl(path);
+
+      // ── Step 3: Save image row to article_images via adminPost ───────────
+      // NOTE: We use safe default dimensions (1200×800) instead of img.onload
+      // because img.onload is unreliable — CORS or CDN latency causes onerror
+      // to fire even when the upload succeeded, silently killing the whole flow.
+      const cleanName = file.name
+        .replace(/\.[^/.]+$/, '')       // strip extension
+        .replace(/[-_]+/g, ' ')         // hyphens/underscores → spaces
+        .replace(/\s+/g, ' ')           // collapse whitespace
+        .trim();
+
+      const { error: imgErr } = await adminPost('insert_images', [{
+        article_id:      selectedArticle.id,
+        image_url:       publicUrl,
+        position:        images.length,
+        width:           1200,   // safe default
+        height:          800,    // safe default
+        size_kb:         Math.round(file.size / 1024),
+        alt_text:        cleanName || 'Article image',
+        image_source:    'upload',
+        photographer:    null,
+        photographer_url: null,
+        wiki_attribution: null,
+        wiki_license:    null,
+        wiki_license_url: null,
+      }], adminPassword) as { error: any };
+
+      if (imgErr) throw new Error(imgErr.message);
+
+      // ── Step 4: Set as cover image if this is the first/only image ───────
+      if (images.length === 0) {
+        await adminPost(
+          'update_article_image_url',
+          { id: selectedArticle.id, image_url: publicUrl },
+          adminPassword
+        );
+      }
+
+      // ── Step 5: Refresh the article panel so the new image appears ───────
+      await selectArticle(selectedArticle);
+      setSuccess('✅ Image uploaded successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+
+    } catch (e: any) {
+      setError(`Upload failed: ${e?.message ?? 'Unknown error'}`);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
   const deleteImage = async (id: number) => {
@@ -812,14 +929,11 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
     try {
       const { error: e } = await adminPost('publish_article', { id: selectedArticle.id }, adminPassword) as { error: any };
       if (e) throw new Error(e.message);
-      // Update selected article state immediately so UI reflects published status
       const updated = { ...selectedArticle, is_published: true, is_draft: false };
       setSelectedArticle(updated);
-      // Update the article in the list too
       setArticles(prev => prev.map(a => a.id === selectedArticle.id ? updated : a));
       setSuccess('✅ Article is live!');
       setTimeout(() => setSuccess(null), 3000);
-      // Refresh the list so counts stay correct
       await fetchArticles();
     } catch (e: any) { setError(e.message); }
   };
@@ -839,27 +953,16 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
   };
 
   // ── UNPUBLISH → back to draft ──────────────────────────────────────────────
-  // FIX: Previously cleared selectedArticle which made it look like nothing happened.
-  // Now we keep the article selected, update its state, and switch the filter to draft.
   const unpublishArticle = async (article: Article) => {
     if (!confirm('Move this article back to drafts?')) return;
     try {
       const { error: e } = await adminPost('unpublish_article', { id: article.id }, adminPassword) as { error: any };
       if (e) throw new Error(e.message);
-
-      // Build updated article object reflecting draft state
       const updated = { ...article, is_published: false, is_draft: true };
-
-      // Update the selected article in-place so the detail panel refreshes
       setSelectedArticle(updated);
-
-      // Switch the list filter to 'draft' so the article is visible in the sidebar
       setFilter('draft');
-
       setSuccess('✅ Moved to drafts.');
       setTimeout(() => setSuccess(null), 3000);
-
-      // Refresh article list (will now show drafts because filter changed)
       await fetchArticles();
     } catch (e: any) { setError(e.message); }
   };
@@ -885,6 +988,7 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
   const getImageCredit = (img: ArticleImage): string | null => {
     if (img.image_source === 'pexels' && img.photographer) return `Photo by ${img.photographer} on Pexels`;
     if (img.image_source === 'wikimedia' && img.wiki_attribution) return `${img.wiki_attribution}${img.wiki_license ? ` · ${img.wiki_license}` : ''} · Wikimedia Commons`;
+    if (img.image_source === 'upload') return 'Manually uploaded';
     return null;
   };
   const lowTopicCategories = topicPoolCounts.filter(c => c.unused < LOW_TOPIC_WARNING);
@@ -899,6 +1003,36 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
       </div>
 
       <SchedulerPanel />
+
+      {/* ── Storage bucket status banner ─────────────────────────────────── */}
+      {checkingBucket && (
+        <div className="mb-4 p-3 rounded-lg border bg-blue-50 border-blue-300 text-blue-800 text-sm flex items-center gap-2">
+          <RefreshCw size={14} className="animate-spin shrink-0" />
+          Checking storage bucket…
+        </div>
+      )}
+      {!checkingBucket && bucketStatus && !bucketStatus.ok && (
+        <div className="mb-4 p-4 rounded-lg border bg-red-50 border-red-300 text-red-800">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-bold text-sm">⚠️ Storage bucket issue</p>
+              <p className="text-sm mt-1">{bucketStatus.message}</p>
+              <p className="text-xs mt-2 text-red-600">
+                Manual fix: Go to <strong>Supabase → Storage → New bucket</strong>, name it{' '}
+                <code className="bg-red-100 px-1 rounded">article-images</code>, enable Public, save.
+              </p>
+            </div>
+            <button onClick={checkBucket} className="shrink-0 text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded font-medium">
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+      {!checkingBucket && bucketStatus?.ok && bucketStatus.message !== 'Bucket already exists' && (
+        <div className="mb-4 p-3 rounded-lg border bg-green-50 border-green-300 text-green-800 text-sm">
+          ✅ {bucketStatus.message}
+        </div>
+      )}
 
       {topicDebugMsg && (
         <div className={`mb-4 p-3 rounded-lg border text-sm font-mono flex items-center justify-between gap-3 ${
@@ -1191,7 +1325,6 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
 
                 {/* ── Action buttons based on status ── */}
                 {!selectedArticle.is_published ? (
-                  // DRAFT STATE: Show publish button + delete
                   <div className="space-y-2">
                     <Button
                       onClick={publishArticle}
@@ -1212,7 +1345,6 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
                     </Button>
                   </div>
                 ) : (
-                  // PUBLISHED STATE: Show "move to draft" + delete
                   <div className="space-y-2">
                     <div className="w-full py-2.5 text-center text-green-700 font-bold bg-green-50 rounded-lg border border-green-200 text-sm">
                       🟢 Live on your site
@@ -1250,31 +1382,64 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
                     {refetchingImages ? 'Fetching...' : 'Re-fetch'}
                   </Button>
                 </div>
+
+                {/* Upload area — shown when under target image count */}
                 {images.length < TARGET_IMAGES && (
                   <label className="block mb-4 cursor-pointer">
                     <div className={`border-2 border-dashed rounded-xl p-4 text-center transition ${uploading ? 'border-amber-300 bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'}`}>
                       <Upload size={24} className="mx-auto mb-1 text-gray-400" />
-                      <p className="text-sm font-medium text-gray-600">{uploading ? '⏳ Uploading...' : 'Upload image'}</p>
-                      <p className="text-xs text-gray-400">Min 800×600px · JPG or PNG</p>
+                      {uploading ? (
+                        <>
+                          <p className="text-sm font-medium text-amber-600">⏳ Uploading…</p>
+                          <p className="text-xs text-amber-500 mt-0.5">Please wait</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-medium text-gray-600">Click to upload image</p>
+                          <p className="text-xs text-gray-400 mt-0.5">JPG, PNG, WebP or GIF · max 5 MB</p>
+                        </>
+                      )}
                     </div>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} className="hidden" />
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={handleImageUpload}
+                      disabled={uploading}
+                      className="hidden"
+                    />
                   </label>
                 )}
+
+                {/* Image grid */}
                 {images.length > 0 ? (
                   <div className="grid grid-cols-2 gap-3">
                     {images.map((img, idx) => {
                       const credit = getImageCredit(img);
                       return (
                         <div key={img.id} className="relative group rounded-lg overflow-hidden border border-gray-200">
-                          <img src={img.image_url} alt={img.alt_text || `Image ${idx + 1}`} className="w-full h-36 object-cover" loading="lazy" />
-                          <span className="absolute top-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">#{idx + 1}</span>
+                          <img
+                            src={img.image_url}
+                            alt={img.alt_text || `Image ${idx + 1}`}
+                            className="w-full h-36 object-cover"
+                            loading="lazy"
+                          />
+                          <span className="absolute top-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                            #{idx + 1}
+                          </span>
+                          {img.image_source === 'upload' && (
+                            <span className="absolute top-1 right-1 bg-blue-600/80 text-white text-xs px-1.5 py-0.5 rounded">
+                              uploaded
+                            </span>
+                          )}
                           {credit && (
                             <div className="px-2 py-1 bg-gray-50 border-t border-gray-100">
                               <p className="text-[10px] text-gray-400 truncate">{credit}</p>
                             </div>
                           )}
-                          <button onClick={() => deleteImage(img.id)}
-                            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                          <button
+                            onClick={() => deleteImage(img.id)}
+                            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                          >
                             <Trash2 size={24} className="text-red-400" />
                           </button>
                         </div>
@@ -1285,7 +1450,7 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
                   <div className="text-center py-6 bg-red-50 rounded-xl border border-red-200">
                     <p className="text-3xl mb-2">📭</p>
                     <p className="text-sm font-bold text-red-600">No images</p>
-                    <p className="text-xs text-red-400 mt-1">Use Re-fetch or upload manually.</p>
+                    <p className="text-xs text-red-400 mt-1">Use Re-fetch or upload manually above.</p>
                   </div>
                 )}
               </Card>

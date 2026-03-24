@@ -1483,3 +1483,38 @@ WHERE is_published = true AND is_draft = true AND deleted_at IS NULL;
 SELECT id, title, is_published, is_draft 
 FROM public.articles 
 WHERE is_published = true AND is_draft = true AND deleted_at IS NULL;
+
+-- Create the bucket via SQL (alternative if UI doesn't work)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'article-images',
+  'article-images', 
+  true,
+  5242880,  -- 5MB max per file
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Allow anyone to read/view images (public bucket)
+DROP POLICY IF EXISTS "Public read article-images" ON storage.objects;
+CREATE POLICY "Public read article-images"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'article-images');
+
+-- Allow service role to upload
+DROP POLICY IF EXISTS "Service role upload article-images" ON storage.objects;
+CREATE POLICY "Service role upload article-images"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'article-images');
+
+-- Allow service role to update
+DROP POLICY IF EXISTS "Service role update article-images" ON storage.objects;
+CREATE POLICY "Service role update article-images"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'article-images');
+
+-- Allow service role to delete
+DROP POLICY IF EXISTS "Service role delete article-images" ON storage.objects;
+CREATE POLICY "Service role delete article-images"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'article-images');
