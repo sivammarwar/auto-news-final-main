@@ -798,10 +798,13 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
   };
 
   // ── IMAGE UPLOAD ───────────────────────────────────────────────────────────
+  // Uses a signed upload URL so the file goes directly from the browser to
+  // Supabase Storage — never through the Next.js API route body.
+  // This avoids the 413 / FUNCTION_PAYLOAD_TOO_LARGE error entirely.
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedArticle || !e.target.files?.length) return;
     const file = e.target.files[0];
-  
+
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (!allowedTypes.includes(file.type)) {
       setError('Only JPG, PNG, WebP, or GIF images are allowed.');
@@ -813,34 +816,39 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
       e.target.value = '';
       return;
     }
-  
+
     setUploading(true); setError(null);
     try {
-      const base64 = await new Promise<string>((res, rej) => {
-        const reader = new FileReader();
-        reader.onload  = () => res((reader.result as string).split(',')[1]);
-        reader.onerror = () => rej(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
-  
       const ext  = file.name.split('.').pop() ?? 'jpg';
       const path = `${selectedArticle.id}/${Date.now()}.${ext}`;
-  
-      const { data: uploadData, error: upErr } = await adminPost('upload_image', {
+
+      // Step 1 — ask the API route for a signed upload URL (tiny JSON, no binary)
+      const { data: urlData, error: urlErr } = await adminPost('get_upload_url', {
         path,
-        base64,
-        contentType: file.type,
         bucket: STORAGE_BUCKET,
-      }, adminPassword) as { data: { publicUrl: string } | null; error: any };
-  
-      if (upErr) throw new Error(upErr.message);
-      const publicUrl = uploadData!.publicUrl;
-  
+      }, adminPassword) as { data: { signedUrl: string; token: string; publicUrl: string } | null; error: any };
+
+      if (urlErr) throw new Error(urlErr.message ?? 'Could not get upload URL');
+      const { signedUrl, publicUrl } = urlData!;
+
+      // Step 2 — PUT the raw file directly to Supabase Storage from the browser
+      const uploadRes = await fetch(signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        const msg = await uploadRes.text().catch(() => uploadRes.statusText);
+        throw new Error(`Storage upload failed (${uploadRes.status}): ${msg}`);
+      }
+
+      // Step 3 — save the image row in the DB via the API route (tiny JSON)
       const cleanName = file.name
         .replace(/\.[^/.]+$/, '')
         .replace(/[-_]+/g, ' ')
         .trim();
-  
+
       const { error: imgErr } = await adminPost('insert_images', [{
         article_id:       selectedArticle.id,
         image_url:        publicUrl,
@@ -856,20 +864,21 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
         wiki_license:     null,
         wiki_license_url: null,
       }], adminPassword) as { error: any };
-  
+
       if (imgErr) throw new Error(imgErr.message);
-  
+
+      // Step 4 — set as cover image if this is the first image
       if (images.length === 0) {
         await adminPost('update_article_image_url',
           { id: selectedArticle.id, image_url: publicUrl },
           adminPassword
         );
       }
-  
+
       await selectArticle(selectedArticle);
       setSuccess('✅ Image uploaded successfully!');
       setTimeout(() => setSuccess(null), 3000);
-  
+
     } catch (e: any) {
       setError(`Upload failed: ${e?.message ?? 'Unknown error'}`);
     } finally {

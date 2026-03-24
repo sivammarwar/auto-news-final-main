@@ -156,26 +156,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data, error });
     }
 
-    // ── UPLOAD IMAGE — uses service role key, bypasses RLS entirely ────────────
-    case 'upload_image': {
-      const { path, base64, contentType, bucket } = payload;
+    // ── GET UPLOAD URL — returns a short-lived signed upload URL so the browser
+    // can PUT the file directly to Supabase Storage without routing the binary
+    // through the Next.js API route (which has a ~4 MB body limit).
+    case 'get_upload_url': {
+      const { path, bucket } = payload;
 
-      const fileBuffer = Buffer.from(base64, 'base64');
-
-      const { error } = await adminDb.storage
+      const { data, error } = await adminDb.storage
         .from(bucket)
-        .upload(path, fileBuffer, {
-          contentType,
-          upsert: true,
-        });
+        .createSignedUploadUrl(path);
 
       if (error) return NextResponse.json({ data: null, error }, { status: 500 });
 
+      // Also return the final public URL so the client can save it to the DB
       const { data: { publicUrl } } = adminDb.storage
         .from(bucket)
         .getPublicUrl(path);
 
-      return NextResponse.json({ data: { publicUrl }, error: null });
+      return NextResponse.json({
+        data: { signedUrl: data.signedUrl, token: data.token, publicUrl },
+        error: null,
+      });
     }
 
     // ── ENSURE STORAGE BUCKET — uses service role key to create bucket if missing
