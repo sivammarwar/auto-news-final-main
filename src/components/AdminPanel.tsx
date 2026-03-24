@@ -168,7 +168,6 @@ const TARGET_IMAGES          = 2;
 const MIN_IMAGES_TO_PUBLISH  = 2;
 const IMAGE_MIN_WIDTH        = 800;
 const LOW_TOPIC_WARNING      = 10;
-// ─── Storage bucket name — must match exactly what you created in Supabase ───
 const STORAGE_BUCKET         = 'article-images';
 
 const nowTS  = () => new Date().toLocaleTimeString('en-IN', { hour12: false });
@@ -409,26 +408,18 @@ async function fetchAndSaveImages(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ENSURE STORAGE BUCKET EXISTS
+// ENSURE STORAGE BUCKET EXISTS — fixed: uses adminPost (service role) not anon client
 // ════════════════════════════════════════════════════════════════════════════
-async function ensureStorageBucket(): Promise<{ ok: boolean; message: string }> {
+async function ensureStorageBucket(adminPassword: string): Promise<{ ok: boolean; message: string }> {
   try {
-    // Check if bucket already exists
-    const { data: buckets, error: listErr } = await supabase.storage.listBuckets();
-    if (listErr) return { ok: false, message: `Cannot list buckets: ${listErr.message}` };
+    const { data, error } = await adminPost(
+      'ensure_storage_bucket',
+      { bucket: STORAGE_BUCKET },
+      adminPassword
+    ) as { data: { message: string } | null; error: { message: string } | null };
 
-    const exists = (buckets ?? []).some(b => b.name === STORAGE_BUCKET);
-    if (exists) return { ok: true, message: 'Bucket already exists' };
-
-    // Create the bucket
-    const { error: createErr } = await supabase.storage.createBucket(STORAGE_BUCKET, {
-      public: true,
-      fileSizeLimit: 5 * 1024 * 1024, // 5 MB
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
-    });
-
-    if (createErr) return { ok: false, message: `Bucket creation failed: ${createErr.message}` };
-    return { ok: true, message: `Bucket "${STORAGE_BUCKET}" created successfully` };
+    if (error) return { ok: false, message: `Bucket creation failed: ${error.message}` };
+    return { ok: true, message: data?.message ?? 'Bucket ready' };
   } catch (e: any) {
     return { ok: false, message: `Unexpected error: ${e?.message ?? String(e)}` };
   }
@@ -464,7 +455,6 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
   const [topicSaveMsg, setTopicSaveMsg]       = useState<string | null>(null);
   const [showTopicPool, setShowTopicPool]     = useState(false);
   const [topicDebugMsg, setTopicDebugMsg]     = useState<string | null>(null);
-  // ── NEW: bucket status ──────────────────────────────────────────────────
   const [bucketStatus, setBucketStatus]       = useState<{ ok: boolean; message: string } | null>(null);
   const [checkingBucket, setCheckingBucket]   = useState(false);
 
@@ -474,7 +464,7 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
 
   useEffect(() => { fetchArticles(); }, [filter, filterCat]);
   useEffect(() => { fetchTopicPoolCounts(); }, []);
-  // ── Check / create storage bucket on mount ──────────────────────────────
+  // Pass adminPassword so bucket check uses service role via API route
   useEffect(() => { checkBucket(); }, []);
 
   useEffect(() => {
@@ -486,10 +476,10 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
     setGenLogs(prev => [...prev.slice(-400), { id: Date.now() + Math.random(), message, type, ts: nowTS() }]);
   }, []);
 
-  // ── BUCKET CHECK / CREATE ─────────────────────────────────────────────────
+  // ── BUCKET CHECK / CREATE — now calls API route via adminPost ─────────────
   const checkBucket = async () => {
     setCheckingBucket(true);
-    const result = await ensureStorageBucket();
+    const result = await ensureStorageBucket(adminPassword);
     setBucketStatus(result);
     setCheckingBucket(false);
   };
@@ -807,14 +797,7 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
     finally { setRefetchingImages(false); }
   };
 
-  // ════════════════════════════════════════════════════════════════════════
-  // IMAGE UPLOAD — FIXED
-  // Key changes vs original:
-  //   1. Removed img.onload/onerror wrapper — caused silent failures on
-  //      CORS/CDN latency. We skip dimension detection and use safe defaults.
-  //   2. Sets article cover image_url when this is the first image.
-  //   3. Refreshes the article panel after upload so the new image shows.
-  // ════════════════════════════════════════════════════════════════════════
+  // ── IMAGE UPLOAD ───────────────────────────────────────────────────────────
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedArticle || !e.target.files?.length) return;
     const file = e.target.files[0];
@@ -833,8 +816,6 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
   
     setUploading(true); setError(null);
     try {
-      // ── Convert file to base64 and send to admin API ─────────────────────
-      // This uses the service role key server-side — bypasses anon RLS entirely
       const base64 = await new Promise<string>((res, rej) => {
         const reader = new FileReader();
         reader.onload  = () => res((reader.result as string).split(',')[1]);
@@ -855,7 +836,6 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
       if (upErr) throw new Error(upErr.message);
       const publicUrl = uploadData!.publicUrl;
   
-      // ── Save image row ────────────────────────────────────────────────────
       const cleanName = file.name
         .replace(/\.[^/.]+$/, '')
         .replace(/[-_]+/g, ' ')
@@ -1308,7 +1288,6 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
                   </div>
                 </div>
 
-                {/* ── Action buttons based on status ── */}
                 {!selectedArticle.is_published ? (
                   <div className="space-y-2">
                     <Button
@@ -1368,7 +1347,6 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
                   </Button>
                 </div>
 
-                {/* Upload area — shown when under target image count */}
                 {images.length < TARGET_IMAGES && (
                   <label className="block mb-4 cursor-pointer">
                     <div className={`border-2 border-dashed rounded-xl p-4 text-center transition ${uploading ? 'border-amber-300 bg-amber-50' : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'}`}>
@@ -1395,7 +1373,6 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
                   </label>
                 )}
 
-                {/* Image grid */}
                 {images.length > 0 ? (
                   <div className="grid grid-cols-2 gap-3">
                     {images.map((img, idx) => {

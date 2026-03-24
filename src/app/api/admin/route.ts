@@ -178,6 +178,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: { publicUrl }, error: null });
     }
 
+    // ── ENSURE STORAGE BUCKET — uses service role key to create bucket if missing
+    // This fixes the "row-level security policy" error when creating buckets
+    // from the client side (anon key), which is blocked by Supabase storage RLS.
+    case 'ensure_storage_bucket': {
+      const { bucket } = payload;
+
+      // Check if bucket already exists
+      const { data: buckets, error: listErr } = await adminDb.storage.listBuckets();
+      if (listErr) {
+        return NextResponse.json(
+          { data: null, error: { message: `Cannot list buckets: ${listErr.message}` } },
+          { status: 500 }
+        );
+      }
+
+      const exists = (buckets ?? []).some(b => b.name === bucket);
+      if (exists) {
+        return NextResponse.json({ data: { message: 'Bucket already exists' }, error: null });
+      }
+
+      // Create the bucket using the service role client
+      const { error: createErr } = await adminDb.storage.createBucket(bucket, {
+        public: true,
+        fileSizeLimit: 5 * 1024 * 1024, // 5 MB
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+      });
+
+      if (createErr) {
+        return NextResponse.json(
+          { data: null, error: { message: `Bucket creation failed: ${createErr.message}` } },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        data: { message: `Bucket "${bucket}" created successfully` },
+        error: null,
+      });
+    }
+
     default:
       return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   }
