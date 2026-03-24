@@ -52,13 +52,11 @@ export async function POST(req: NextRequest) {
         .update({
           is_published:  true,
           is_draft:      false,
-          deleted_at:    null,          // safety: undelete if somehow soft-deleted
+          deleted_at:    null,
           updated_at:    new Date().toISOString(),
         })
         .eq('id', id);
-      if (error) {
-        console.error('publish_article error:', error);
-      }
+      if (error) console.error('publish_article error:', error);
       return NextResponse.json({ data, error });
     }
 
@@ -73,9 +71,7 @@ export async function POST(req: NextRequest) {
           updated_at:    new Date().toISOString(),
         })
         .eq('id', id);
-      if (error) {
-        console.error('unpublish_article error:', error);
-      }
+      if (error) console.error('unpublish_article error:', error);
       return NextResponse.json({ data, error });
     }
 
@@ -158,6 +154,28 @@ export async function POST(req: NextRequest) {
     case 'refresh_category_counts': {
       const { data, error } = await adminDb.rpc('refresh_category_counts');
       return NextResponse.json({ data, error });
+    }
+
+    // ── UPLOAD IMAGE — uses service role key, bypasses RLS entirely ────────────
+    case 'upload_image': {
+      const { path, base64, contentType, bucket } = payload;
+
+      const fileBuffer = Buffer.from(base64, 'base64');
+
+      const { error } = await adminDb.storage
+        .from(bucket)
+        .upload(path, fileBuffer, {
+          contentType,
+          upsert: true,
+        });
+
+      if (error) return NextResponse.json({ data: null, error }, { status: 500 });
+
+      const { data: { publicUrl } } = adminDb.storage
+        .from(bucket)
+        .getPublicUrl(path);
+
+      return NextResponse.json({ data: { publicUrl }, error: null });
     }
 
     default:

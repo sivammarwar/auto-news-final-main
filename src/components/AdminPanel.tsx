@@ -818,8 +818,7 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedArticle || !e.target.files?.length) return;
     const file = e.target.files[0];
-
-    // Basic client-side validation
+  
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (!allowedTypes.includes(file.type)) {
       setError('Only JPG, PNG, WebP, or GIF images are allowed.');
@@ -831,80 +830,66 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
       e.target.value = '';
       return;
     }
-
+  
     setUploading(true); setError(null);
     try {
-      // ── Step 1: Upload file to Supabase Storage ──────────────────────────
+      // ── Convert file to base64 and send to admin API ─────────────────────
+      // This uses the service role key server-side — bypasses anon RLS entirely
+      const base64 = await new Promise<string>((res, rej) => {
+        const reader = new FileReader();
+        reader.onload  = () => res((reader.result as string).split(',')[1]);
+        reader.onerror = () => rej(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+  
       const ext  = file.name.split('.').pop() ?? 'jpg';
       const path = `${selectedArticle.id}/${Date.now()}.${ext}`;
-
-      const { error: upErr } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(path, file, { upsert: true, contentType: file.type });
-
-      if (upErr) {
-        // Bucket may not exist yet — try creating it, then retry once
-        if (upErr.message?.toLowerCase().includes('bucket')) {
-          const bucketResult = await ensureStorageBucket();
-          setBucketStatus(bucketResult);
-          if (!bucketResult.ok) throw new Error(`Storage bucket error: ${bucketResult.message}`);
-
-          const { error: retryErr } = await supabase.storage
-            .from(STORAGE_BUCKET)
-            .upload(path, file, { upsert: true, contentType: file.type });
-          if (retryErr) throw retryErr;
-        } else {
-          throw upErr;
-        }
-      }
-
-      // ── Step 2: Get the public CDN URL ───────────────────────────────────
-      const { data: { publicUrl } } = supabase.storage
-        .from(STORAGE_BUCKET)
-        .getPublicUrl(path);
-
-      // ── Step 3: Save image row to article_images via adminPost ───────────
-      // NOTE: We use safe default dimensions (1200×800) instead of img.onload
-      // because img.onload is unreliable — CORS or CDN latency causes onerror
-      // to fire even when the upload succeeded, silently killing the whole flow.
+  
+      const { data: uploadData, error: upErr } = await adminPost('upload_image', {
+        path,
+        base64,
+        contentType: file.type,
+        bucket: STORAGE_BUCKET,
+      }, adminPassword) as { data: { publicUrl: string } | null; error: any };
+  
+      if (upErr) throw new Error(upErr.message);
+      const publicUrl = uploadData!.publicUrl;
+  
+      // ── Save image row ────────────────────────────────────────────────────
       const cleanName = file.name
-        .replace(/\.[^/.]+$/, '')       // strip extension
-        .replace(/[-_]+/g, ' ')         // hyphens/underscores → spaces
-        .replace(/\s+/g, ' ')           // collapse whitespace
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[-_]+/g, ' ')
         .trim();
-
+  
       const { error: imgErr } = await adminPost('insert_images', [{
-        article_id:      selectedArticle.id,
-        image_url:       publicUrl,
-        position:        images.length,
-        width:           1200,   // safe default
-        height:          800,    // safe default
-        size_kb:         Math.round(file.size / 1024),
-        alt_text:        cleanName || 'Article image',
-        image_source:    'upload',
-        photographer:    null,
+        article_id:       selectedArticle.id,
+        image_url:        publicUrl,
+        position:         images.length,
+        width:            1200,
+        height:           800,
+        size_kb:          Math.round(file.size / 1024),
+        alt_text:         cleanName || 'Article image',
+        image_source:     'upload',
+        photographer:     null,
         photographer_url: null,
         wiki_attribution: null,
-        wiki_license:    null,
+        wiki_license:     null,
         wiki_license_url: null,
       }], adminPassword) as { error: any };
-
+  
       if (imgErr) throw new Error(imgErr.message);
-
-      // ── Step 4: Set as cover image if this is the first/only image ───────
+  
       if (images.length === 0) {
-        await adminPost(
-          'update_article_image_url',
+        await adminPost('update_article_image_url',
           { id: selectedArticle.id, image_url: publicUrl },
           adminPassword
         );
       }
-
-      // ── Step 5: Refresh the article panel so the new image appears ───────
+  
       await selectArticle(selectedArticle);
       setSuccess('✅ Image uploaded successfully!');
       setTimeout(() => setSuccess(null), 3000);
-
+  
     } catch (e: any) {
       setError(`Upload failed: ${e?.message ?? 'Unknown error'}`);
     } finally {
