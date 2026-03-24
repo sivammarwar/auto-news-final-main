@@ -867,15 +867,18 @@ export default function AdminPanel({ adminPassword }: { adminPassword: string })
 
       if (imgErr) throw new Error(imgErr.message);
 
-      // Step 4 — set as cover image if this is the first image
-      if (images.length === 0) {
-        await adminPost('update_article_image_url',
-          { id: selectedArticle.id, image_url: publicUrl },
-          adminPassword
-        );
-      }
+      // Step 4 — always update article cover image_url to the uploaded image.
+      // Previously this only ran when images.length === 0, which meant the
+      // article card kept showing the old image if one already existed.
+      await adminPost('update_article_image_url',
+        { id: selectedArticle.id, image_url: publicUrl },
+        adminPassword
+      );
 
+      // Step 5 — refresh the images panel AND the article list so the card
+      // in the left column picks up the new image_url without a page reload.
       await selectArticle(selectedArticle);
+      await fetchArticles();
       setSuccess('✅ Image uploaded successfully!');
       setTimeout(() => setSuccess(null), 3000);
 
