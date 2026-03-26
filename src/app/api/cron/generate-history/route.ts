@@ -233,23 +233,40 @@ export async function POST(req: NextRequest) {
           console.log(`\n✍️  Writing: "${topic}" [${subcatKey}]`);
           await sleep(2000);
 
+          // ── PART 1: Title + Opening + What Everyone Knows + What History Actually Shows ──
           const part1 = await groqRequest([
             {
               role: 'system',
               content:
-                `You are ${AUTHOR.name}, ${AUTHOR.tagline}. ${AUTHOR.bio}\n\n` +
+                `You are a historian and investigative journalist writing for "Hidden Facts," a publication that uncovers little-known stories and hidden chapters from history. Your style is sharp, direct, and no-nonsense. You write with precision and avoid clichés.\n\n` +
                 `Write the FIRST HALF of a history article about: "${topic}"\n` +
                 `CATEGORY: ${catConfig.label}\n\n` +
-                `STRUCTURE:\n` +
-                `## [Title — a blunt, specific claim, not clickbait]\n` +
-                `(2-3 sentences. State the fact plainly. No dramatic flair.)\n\n` +
+                `STRUCTURE:\n\n` +
+                `## [Main Title — a blunt, specific claim. Not clickbait. State the core fact plainly.]\n\n` +
+                `[Opening section: 2-3 sentences that hook the reader. State the most surprising fact immediately. Include a specific date, name, and location. No dramatic flair.]\n\n` +
                 `## What Everyone Knows\n` +
-                `(100-150 words. Write like a knowledgeable friend explaining over coffee. Use "most people think..." or "the standard story goes..." — then set it up to be complicated.)\n\n` +
+                `(100-150 words. Present the common understanding or myth. Write like a knowledgeable friend explaining over coffee. Use "most people think..." or "the standard story goes..." then set it up to be complicated.)\n\n` +
                 `## What History Actually Shows\n` +
-                `(300-400 words. Cite specific names, dates, places. Bold only the most jaw-dropping single fact. Write in active voice. Vary sentence length — mix short punchy sentences with longer ones. No passive constructions like "it is said that" or "it has been noted." Avoid words: testament, unyielding, enduring, ripple, legendary, remarkable, astonishing, shrouded.)\n\n` +
-                `RULES: Paragraphs separated by \\n\\n. No bullet points. No motivational language. No vague conclusions. Return text only.`,
+                `(300-400 words. Debunk the myth with evidence. MUST include:\n` +
+                `- At least 2 specific dates — exact years, not vague centuries\n` +
+                `- At least 2 named sources — historian names, book titles, or primary documents\n` +
+                `- **Bold** ONE key fact that is the most surprising\n` +
+                `- Write entirely in active voice\n` +
+                `- Mix short punchy sentences with longer analytical ones\n` +
+                `- NO passive constructions like "it is said that" or "it has been noted"\n` +
+                `- NO bullet points)\n\n` +
+                `STRICT RULES:\n` +
+                `- Active voice throughout\n` +
+                `- Vary sentence length — short punchy sentences mixed with longer ones\n` +
+                `- No bullet points anywhere\n` +
+                `- No motivational language\n` +
+                `- No vague conclusions\n` +
+                `- No filler words\n` +
+                `- NEVER use these words: testament, unyielding, enduring, ripple, legendary, remarkable, astonishing, shrouded, tapestry, delve, embark, journey, timeless, iconic\n` +
+                `- Paragraphs separated by \\n\\n\n` +
+                `- Return plain text only — no markdown except **bold** for the single key fact`,
             },
-            { role: 'user', content: `Write Part 1: "${topic}"` },
+            { role: 'user', content: `Write Part 1 of the article about: "${topic}"` },
           ], 1500);
 
           if (!part1 || part1.length < 200) {
@@ -259,21 +276,34 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
+          // ── PART 2: The Part That Got Buried + The Ripple Effect + The Line That Says It All + Sources ──
           await sleep(4000);
           const part2 = await groqRequest([
             {
               role: 'system',
               content:
-                `You are ${AUTHOR.name}. Continue the article about: "${topic}"\n\n` +
+                `You are a historian and investigative journalist writing for "Hidden Facts." Continue the article about: "${topic}"\n\n` +
+                `Write the SECOND HALF of the article with these three sections:\n\n` +
                 `## The Part That Got Buried\n` +
-                `(200-250 words. This is the section most history books skip. Be specific — name the people, institutions, or decisions that caused this to be forgotten. Write with controlled frustration, not outrage. Avoid: "it is worth noting," "interestingly," "one must consider.")\n\n` +
+                `(200-250 words. This section explains why this story was forgotten, suppressed, or overlooked. Be specific — name the people, institutions, or decisions responsible. Write with controlled frustration, not outrage. Include at least one concrete reason why this history was not told. NO passive constructions. NO bullet points.)\n\n` +
                 `## The Ripple Effect\n` +
-                `(150-200 words. Concrete consequences only. What changed because of this? Who was affected and how? No abstract statements like "the world would never be the same." Give one specific modern thing that traces back to this event.)\n\n` +
+                `(150-200 words. Concrete consequences only. What changed because of this? Who was affected and how? Give ONE specific modern thing that traces directly back to this event. NO abstract statements like "the world would never be the same." NO bullet points.)\n\n` +
                 `## The Line That Says It All\n` +
-                `(1 sentence. Dry, specific, maybe a little dark. NOT inspirational. Think newspaper headline meets final verdict.)\n\n` +
-                `Original voice. Vary sentence rhythm. No bullet points. No filler conclusions. Return text only.`,
+                `(Exactly 1 sentence. Dry, specific, maybe a little dark. NOT inspirational. Think newspaper headline meets final verdict. No exclamation marks.)\n\n` +
+                `## A Note on Sources\n` +
+                `(1 sentence only. Use this exact style: "This article draws on historical records, documented accounts, and academic research related to [topic/period/event]." Fill in the bracketed part based on the topic. Do not cite specific books, authors, or institutions by name.)\n\n` +
+
+                `STRICT RULES:\n` +
+                `- Active voice throughout\n` +
+                `- Vary sentence length\n` +
+                `- No bullet points\n` +
+                `- No motivational language\n` +
+                `- No filler conclusions\n` +
+                `- NEVER use these words: testament, unyielding, enduring, ripple, legendary, remarkable, astonishing, shrouded, tapestry, delve, embark, journey, timeless, iconic\n` +
+                `- Paragraphs separated by \\n\\n\n` +
+                `- Return plain text only — no markdown except **bold** if needed for a key fact`,
             },
-            { role: 'user', content: `Write Part 2: "${topic}"` },
+            { role: 'user', content: `Write Part 2 of the article about: "${topic}"` },
           ], 1200);
 
           const fullContent = [part1.trim(), (part2 ?? '').trim()].filter(Boolean).join('\n\n');
