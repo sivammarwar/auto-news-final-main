@@ -238,16 +238,12 @@ export async function POST(req: NextRequest) {
               role: 'system',
               content:
                 `You are ${AUTHOR.name}, ${AUTHOR.tagline}. ${AUTHOR.bio}\n\n` +
-                `Write the FIRST HALF of a history article about: "${topic}"\n` +
-                `CATEGORY: ${catConfig.label}\n\n` +
-                `STRUCTURE:\n` +
-                `## [Title — a blunt, specific claim, not clickbait]\n` +
-                `(2-3 sentences. State the fact plainly. No dramatic flair.)\n\n` +
-                `## What Everyone Knows\n` +
-                `(100-150 words. Write like a knowledgeable friend explaining over coffee. Use "most people think..." or "the standard story goes..." — then set it up to be complicated.)\n\n` +
-                `## What History Actually Shows\n` +
-                `(300-400 words. Cite specific names, dates, places. Bold only the most jaw-dropping single fact. Write in active voice. Vary sentence length — mix short punchy sentences with longer ones. No passive constructions like "it is said that" or "it has been noted." Avoid words: testament, unyielding, enduring, ripple, legendary, remarkable, astonishing, shrouded.)\n\n` +
-                `RULES: Paragraphs separated by \\n\\n. No bullet points. No motivational language. No vague conclusions. Return text only.`,
+                `Write the FIRST HALF of a gripping history article.\n` +
+                `TOPIC: "${topic}"\nCATEGORY: ${catConfig.label}\n\n` +
+                `## [Most surprising fact as a statement]\n(2-3 sentences)\n\n` +
+                `## What Everyone Knows\n(100-150 words)\n\n` +
+                `## What History Actually Shows\n(300-400 words, bold key facts)\n\n` +
+                `RULES: Paragraphs separated by \\n\\n. No bullet points. Original voice only. Return text only.`,
             },
             { role: 'user', content: `Write Part 1: "${topic}"` },
           ], 1500);
@@ -264,14 +260,11 @@ export async function POST(req: NextRequest) {
             {
               role: 'system',
               content:
-                `You are ${AUTHOR.name}. Continue the article about: "${topic}"\n\n` +
-                `## The Part That Got Buried\n` +
-                `(200-250 words. This is the section most history books skip. Be specific — name the people, institutions, or decisions that caused this to be forgotten. Write with controlled frustration, not outrage. Avoid: "it is worth noting," "interestingly," "one must consider.")\n\n` +
-                `## The Ripple Effect\n` +
-                `(150-200 words. Concrete consequences only. What changed because of this? Who was affected and how? No abstract statements like "the world would never be the same." Give one specific modern thing that traces back to this event.)\n\n` +
-                `## The Line That Says It All\n` +
-                `(1 sentence. Dry, specific, maybe a little dark. NOT inspirational. Think newspaper headline meets final verdict.)\n\n` +
-                `Original voice. Vary sentence rhythm. No bullet points. No filler conclusions. Return text only.`,
+                `You are ${AUTHOR.name}. Write the SECOND HALF about: "${topic}"\n\n` +
+                `## The Part That Got Buried\n(200-250 words)\n\n` +
+                `## The Ripple Effect\n(150-200 words)\n\n` +
+                `## The Line That Says It All\n(1 sentence)\n\n` +
+                `Original voice. No bullet points. Return text only.`,
             },
             { role: 'user', content: `Write Part 2: "${topic}"` },
           ], 1200);
