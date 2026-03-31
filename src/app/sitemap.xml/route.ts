@@ -75,15 +75,27 @@ export async function GET(req: NextRequest) {
   try {
     console.log(`Generating sitemap for: ${domain}`);
 
-    const { data: articles, error } = await supabase
-      .from('articles')
-      .select('id, slug, published_date, updated_at, subcategory')
-      .eq('is_published', true)
-      .eq('category', 'history')
-      .order('published_date', { ascending: false })
-      .limit(50000);
+    // ── Paginated fetch to bypass Supabase's default row cap ─────────────
+    const PAGE_SIZE = 1000;
+    let allArticles: any[] = [];
+    let from = 0;
 
-    if (error) throw error;
+    while (true) {
+      const { data, error } = await supabase
+        .from('articles')
+        .select('id, slug, published_date, updated_at, subcategory')
+        .eq('is_published', true)
+        .eq('category', 'history')
+        .order('published_date', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+
+      allArticles = allArticles.concat(data);
+      if (data.length < PAGE_SIZE) break; // last page reached
+      from += PAGE_SIZE;
+    }
 
     const urls: string[] = [];
 
@@ -105,7 +117,7 @@ export async function GET(req: NextRequest) {
     urls.push(buildUrl(domain, '/rss',     0.3, FREQ.legal, today));
 
     // ── Article pages — use slug, fall back to id for old articles ────────
-    (articles ?? []).forEach((article: any) => {
+    allArticles.forEach((article: any) => {
       const lastmod    = new Date(article.updated_at || article.published_date)
         .toISOString()
         .split('T')[0];
@@ -122,7 +134,7 @@ export async function GET(req: NextRequest) {
       '</urlset>',
     ].join('\n');
 
-    console.log(`✓ Sitemap — ${urls.length} URLs (${articles?.length ?? 0} articles)`);
+    console.log(`✓ Sitemap — ${urls.length} URLs (${allArticles.length} articles)`);
 
     return new NextResponse(xml, {
       status: 200,
