@@ -29,8 +29,8 @@ const QUICK_LINKS = [
   { label: '⭐ Unsung Heroes',  path: '/category/historys-unsung-heroes' },
 ];
 
-// Same resize function as HeroSection — must match exactly so preload URL
-// matches the actual <img> src the browser will request
+// Must match HeroSection's pexelsResize exactly so the preload URL matches
+// the actual <img> src the browser requests (avoids a double-fetch).
 function pexelsResize(url: string, width = 700, quality = 75): string {
   if (!url || !url.includes('pexels.com')) return url;
   try {
@@ -48,54 +48,72 @@ function pexelsResize(url: string, width = 700, quality = 75): string {
   }
 }
 
-async function getArticles() {
+const PAGE_SIZE = 24;
+
+const SELECT =
+  'id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, era';
+
+async function getInitialArticles() {
   const db = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  // Fetch PAGE_SIZE + 1 grid articles (after the hero) so we can determine
+  // whether there are more pages — we pass this to ArticleGrid as initialHasMore.
+  // We fetch PAGE_SIZE + 1 + 1 (the hero) = PAGE_SIZE + 2 total.
   const { data, error } = await db
     .from('articles')
-    .select('id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, era')
+    .select(SELECT)
     .eq('is_published', true)
     .is('deleted_at', null)
     .order('published_date', { ascending: false })
-    .limit(100);
+    .order('id', { ascending: false })
+    .limit(PAGE_SIZE + 2); // hero (1) + first grid page (24) + hasMore probe (1)
 
   if (error) {
     console.error('Failed to fetch articles:', error);
-    return [];
+    return { hero: null, gridArticles: [], hasMore: false, nextCursor: null, nextCursorId: null };
   }
 
-  return data ?? [];
+  const rows = data ?? [];
+
+  // First row is the hero
+  const hero        = rows[0] ?? null;
+  // Remaining rows are grid candidates (up to PAGE_SIZE + 1)
+  const gridRows    = rows.slice(1);
+  const hasMore     = gridRows.length > PAGE_SIZE;
+  const gridArticles = hasMore ? gridRows.slice(0, PAGE_SIZE) : gridRows;
+
+  const last = gridArticles[gridArticles.length - 1];
+
+  return {
+    hero,
+    gridArticles,
+    hasMore,
+    nextCursor:   last ? last.published_date : null,
+    nextCursorId: last ? last.id            : null,
+  };
 }
 
 export default async function Home() {
-  const articles = await getArticles();
+  const { hero, gridArticles, hasMore, nextCursor, nextCursorId } =
+    await getInitialArticles();
 
-  const heroArticle  = articles[0];
-  const gridArticles = articles.slice(1);
-
-  // Build the preload URL at render time — same params as HeroSection's pexelsResize
-  const lcpImageUrl = heroArticle?.image_url
-    ? pexelsResize(heroArticle.image_url, 700, 75)
+  const lcpImageUrl = hero?.image_url
+    ? pexelsResize(hero.image_url, 700, 75)
     : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
 
-      {/*
-        LCP PRELOAD: Tells the browser to fetch the hero image immediately —
-        before it even parses the page body or unblocks the CSS chunk.
-        This eliminates the 370ms "resource load delay" in the LCP breakdown.
-        The URL must exactly match what HeroSection renders as the <img> src.
-      */}
+      {/* LCP hero image preload — see original page.tsx comment for rationale */}
       {lcpImageUrl && (
         <link
           rel="preload"
           as="image"
           href={lcpImageUrl}
-          // @ts-ignore — fetchPriority is valid on <link> but not in TS types yet
+          // @ts-ignore — fetchPriority valid on <link> but not in TS types yet
           fetchPriority="high"
         />
       )}
@@ -103,11 +121,11 @@ export default async function Home() {
       <SiteHeader />
 
       <main className="flex-1">
-        {!heroArticle ? (
+        {!hero ? (
           <EmptyState />
         ) : (
           <>
-            <HeroSection article={heroArticle as any} />
+            <HeroSection article={hero as any} />
 
             {/* Category quick-nav */}
             <div className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-14 sm:top-16 z-30">
@@ -126,7 +144,12 @@ export default async function Home() {
               </div>
             </div>
 
-            <ArticleGrid articles={gridArticles as any[]} />
+            <ArticleGrid
+              initialArticles={gridArticles as any[]}
+              initialHasMore={hasMore}
+              initialCursor={nextCursor}
+              initialCursorId={nextCursorId}
+            />
           </>
         )}
       </main>
