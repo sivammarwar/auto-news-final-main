@@ -4,17 +4,12 @@ import { createClient } from '@supabase/supabase-js';
 import { notFound } from 'next/navigation';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
-import ArticleCard from '@/components/ArticleCard';
 import EmptyState from '@/components/EmptyState';
+import CategoryArticleGrid from '@/components/CategoryArticleGrid';
 import { buildCategoryMetadata } from '@/lib/category-seo';
 import { Article } from '@/types/article';
 
 export const revalidate = 3600;
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const SUBCATEGORY_SLUGS = new Set([
   'ancient-civilizations', 'medieval-feudal', 'age-of-exploration',
@@ -46,6 +41,11 @@ const CATEGORY_META: Record<string, { name: string; emoji: string; description: 
   'historys-unsung-heroes': { name: "History's Unsung Heroes",   emoji: '⭐', description: 'The nurses, the codebreakers, the ordinary people who changed history without ever getting a statue.' },
 };
 
+const PAGE_SIZE = 24;
+
+const SELECT =
+  'id, slug, title, summary, category, subcategory, image_url, published_date, source_name, score, era';
+
 export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
@@ -67,23 +67,37 @@ export default async function CategoryPage({
 }) {
   const { slug } = await params;
 
-  let query = supabase
+  // Validate slug before hitting the DB
+  if (slug !== 'history' && !SUBCATEGORY_SLUGS.has(slug)) notFound();
+
+  const db = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  let query = db
     .from('articles')
-    .select('id, title, summary, category, subcategory, image_url, published_date, source_name, score, is_published, is_draft, created_at, updated_at, era, difficulty, source_url, raw_content, admin_notes, scheduled_publish_date')
+    .select(SELECT)
     .eq('is_published', true)
     .is('deleted_at', null)
     .order('published_date', { ascending: false })
-    .limit(50);
+    .order('id', { ascending: false })
+    .limit(PAGE_SIZE + 1); // fetch one extra to determine hasMore
 
   if (slug === 'history') {
     query = query.eq('category', 'history');
-  } else if (SUBCATEGORY_SLUGS.has(slug)) {
-    query = query.eq('subcategory', slug);
   } else {
-    notFound();
+    query = query.eq('subcategory', slug);
   }
 
-  const { data: articles } = await query;
+  const { data } = await query;
+  const rows = data ?? [];
+
+  const hasMore      = rows.length > PAGE_SIZE;
+  const articles     = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+  const last         = articles[articles.length - 1];
+  const nextCursor   = last ? last.published_date : null;
+  const nextCursorId = last ? last.id : null;
 
   const meta = CATEGORY_META[slug] ?? {
     name:        slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
@@ -95,6 +109,8 @@ export default async function CategoryPage({
     <div className="min-h-screen bg-background flex flex-col">
       <SiteHeader />
       <main className="flex-1">
+
+        {/* Category header */}
         <section className="border-b border-border">
           <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
             <div className="flex flex-col gap-2">
@@ -121,26 +137,21 @@ export default async function CategoryPage({
           </div>
         </section>
 
+        {/* Article grid with client-side load more */}
         <section className="max-w-screen-xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
-          {!articles?.length ? (
+          {!articles.length ? (
             <EmptyState
               title={`No ${meta.name} articles yet`}
               message={`Fresh ${meta.name} stories are on their way. Check back soon.`}
             />
           ) : (
-            <>
-              <div className="mb-6">
-                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  {articles.length} article{articles.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0">
-                {articles.map((article, i) => (
-                  // @ts-ignore — article prop is correct, TS resolves wrong overload
-                  <ArticleCard key={article.id} article={article as Article} index={i} />
-                ))}
-              </div>
-            </>
+            <CategoryArticleGrid
+              slug={slug}
+              initialArticles={articles as Article[]}
+              initialHasMore={hasMore}
+              initialCursor={nextCursor}
+              initialCursorId={nextCursorId}
+            />
           )}
         </section>
       </main>
