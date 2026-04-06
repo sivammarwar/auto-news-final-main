@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
   const domain =
     process.env.NEXT_PUBLIC_SITE_URL ||
     `https://${req.headers.get('host')}` ||
-    'https://hiddenhistoryfacts.com';
+    'https://www.hiddenhistoryfacts.com';
 
   const today = new Date().toISOString().split('T')[0];
 
