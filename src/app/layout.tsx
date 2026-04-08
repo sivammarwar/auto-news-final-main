@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: BASE_URL,
-    types: { 'application/rss+ff+xml': `${BASE_URL}/rss` },
+    types: { 'application/rss+xml': `${BASE_URL}/rss` },
   },
   robots: {
     index: true, follow: true,
