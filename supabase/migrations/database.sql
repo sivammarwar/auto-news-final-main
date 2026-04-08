@@ -72,7 +72,7 @@ BEFORE UPDATE ON public.settings
 FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
--- Supabase Migration: Add article images support (updated - skips duplicates)
+-- Supabase Migration: Add article images support (updated - skips duplicates) yes
 
 -- Create article_images table to store multiple images per article
 CREATE TABLE IF NOT EXISTS public.article_images (
