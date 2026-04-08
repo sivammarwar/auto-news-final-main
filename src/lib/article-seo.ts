@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hiddenhistoryfacts.com';
 
 const SUBCATEGORY_LABELS: Record<string, string> = {
   'ancient-civilizations':  'Ancient Civilizations',
@@ -97,6 +97,7 @@ export async function generateMetadata(
 // ─── JSON-LD structured data ──────────────────────────────────────────────────
 export function buildArticleJsonLd(article: {
   id: number;
+  slug: string | null;
   title: string;
   summary: string;
   published_date: string;
@@ -107,7 +108,7 @@ export function buildArticleJsonLd(article: {
   raw_content: string | null;
 }) {
   const categoryLabel = SUBCATEGORY_LABELS[article.subcategory ?? ''] ?? 'History';
-  const url           = `${BASE_URL}/article/${article.id}`;
+  const url           = `${BASE_URL}/article/${article.slug ?? article.id}`;
   const imageUrl      = article.image_url ?? `${BASE_URL}/og-default.jpg`;
   const wordCount     = article.raw_content?.trim().split(/\s+/).length ?? 0;
 
