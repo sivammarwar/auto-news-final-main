@@ -11,8 +11,25 @@ import ArticleBody from '@/components/ArticleBody';
 import { buildArticleJsonLd } from '@/lib/article-seo';
 
 export const revalidate = 1800;
+export const dynamicParams = true;
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
+export async function generateStaticParams() {
+  const db = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { data } = await db
+    .from('articles')
+    .select('slug, id')
+    .eq('is_published', true)
+    .is('deleted_at', null)
+    .order('published_date', { ascending: false })
+    .limit(500);
+
+  return (data ?? []).map((a) => ({ slug: a.slug ?? String(a.id) }));
+}
+
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hiddenhistoryfacts.com';
 
 function getSupabase() {
   return createClient(
