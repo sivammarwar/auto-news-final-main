@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://hiddenhistoryfacts.com';
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.hiddenhistoryfacts.com';
 
 function getSupabase() {
   return createClient(
